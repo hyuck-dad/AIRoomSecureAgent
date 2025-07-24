@@ -3,6 +3,10 @@ package com.airoom.secureagent.capture;
 import com.airoom.secureagent.log.HttpLogger;
 import com.airoom.secureagent.log.LogManager;
 
+import oshi.SystemInfo;
+import oshi.software.os.OSProcess;
+import oshi.software.os.OperatingSystem;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -32,8 +36,12 @@ public class ProcessMonitor {
             entry("NVIDIA Share.exe", "NVIDIA 녹화 툴")
     );
 
+    private static final SystemInfo systemInfo = new SystemInfo();
+    private static final OperatingSystem os = systemInfo.getOperatingSystem();
+
     public static void detect() {
         try {
+            // 1. tasklist 기반 감지
             Process process = Runtime.getRuntime().exec("tasklist");
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
@@ -46,6 +54,27 @@ public class ProcessMonitor {
                     if (line.contains(proc)) {
                         long now = System.currentTimeMillis();
                         Long lastDetected = lastDetectedMap.get(proc);
+
+                        // NVIDIA Share는 CPU 사용률로 필터링
+                        if (proc.equals("NVIDIA Share.exe")) {
+                            List<OSProcess> processes = os.getProcesses();
+
+                            Optional<OSProcess> targetProcess = processes.stream()
+                                    .filter(p -> {
+                                        String path = p.getPath();
+                                        return path != null && path.toLowerCase().endsWith("\\" + proc.toLowerCase());
+                                    })
+                                    .findFirst();
+
+                            if (targetProcess.isPresent()) {
+                                double cpu = targetProcess.get().getProcessCpuLoadCumulative() * 100;
+                                if (cpu < 2.0) {
+                                    continue; // idle 상태이면 무시
+                                }
+                            } else {
+                                continue; // 감지 못함
+                            }
+                        }
 
                         if (lastDetected == null || (now - lastDetected > DETECTION_INTERVAL_MS)) {
                             String log = "[프로세스 감지] " + appName + " 실행 중 (" + proc + ")";
