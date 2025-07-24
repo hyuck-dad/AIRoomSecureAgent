@@ -10,9 +10,9 @@ import java.util.*;
 
 public class ProcessMonitor {
 
-    // 마지막 감지 시각을 저장
+    // 마지막 감지 시각 저장
     private static final Map<String, Long> lastDetectedMap = new HashMap<>();
-    private static final long DETECTION_INTERVAL_MS = 10_000; // 10초 간격
+    private static final long DETECTION_INTERVAL_MS = 10_000; // 10초 중복 방지
 
     // 감지 대상: 주요 캡처/녹화 도구
     private static final Map<String, String> suspiciousProcesses = Map.ofEntries(
@@ -37,18 +37,22 @@ public class ProcessMonitor {
             Process process = Runtime.getRuntime().exec("tasklist");
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
+
             while ((line = reader.readLine()) != null) {
-                for (String proc : suspiciousProcesses) {
+                for (Map.Entry<String, String> entry : suspiciousProcesses.entrySet()) {
+                    String proc = entry.getKey();
+                    String appName = entry.getValue();
+
                     if (line.contains(proc)) {
                         long now = System.currentTimeMillis();
                         Long lastDetected = lastDetectedMap.get(proc);
 
-                        // 마지막 감지 이후 10초가 지났으면 로그 기록
                         if (lastDetected == null || (now - lastDetected > DETECTION_INTERVAL_MS)) {
-                            String logMessage = "[경고] 감지된 캡처 도구 실행 중: " + proc;
-                            System.out.println("[서버 수신 로그] " + logMessage);
-                            LogManager.writeLog(logMessage);
-                            HttpLogger.sendLog(logMessage);
+                            String log = "[프로세스 감지] " + appName + " 실행 중 (" + proc + ")";
+                            System.out.println("[SecureAgent] " + log);
+
+                            LogManager.writeLog(log);
+                            HttpLogger.sendLog(log);
 
                             lastDetectedMap.put(proc, now);
                         }
@@ -63,5 +67,4 @@ public class ProcessMonitor {
     private static Map.Entry<String, String> entry(String key, String value) {
         return new AbstractMap.SimpleEntry<>(key, value);
     }
-
 }
