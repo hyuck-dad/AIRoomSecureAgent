@@ -1,6 +1,7 @@
 package com.airoom.secureagent.log;
 
 import com.airoom.secureagent.server.StatusServer;
+import com.airoom.secureagent.util.CryptoUtil;
 
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -22,7 +23,9 @@ public class HttpLogger {
             conn.setRequestProperty("Content-Type", "text/plain; charset=UTF-8");
 
             try (OutputStream os = conn.getOutputStream()) {
-                os.write(message.getBytes(StandardCharsets.UTF_8));
+                // 암호화된 로그 전송
+                String encryptedMessage = CryptoUtil.encrypt(message);
+                os.write(encryptedMessage.getBytes(StandardCharsets.UTF_8));
                 os.flush();
             }
 
