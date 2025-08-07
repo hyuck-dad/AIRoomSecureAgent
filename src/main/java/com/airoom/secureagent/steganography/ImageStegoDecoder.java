@@ -1,7 +1,6 @@
 package com.airoom.secureagent.steganography;
 
-import javax.imageio.ImageIO;
-import javax.imageio.ImageReader;
+import javax.imageio.*;
 import javax.imageio.metadata.IIOMetadata;
 import javax.imageio.metadata.IIOMetadataNode;
 import javax.imageio.stream.ImageInputStream;
@@ -9,46 +8,92 @@ import java.io.File;
 import java.util.Base64;
 import java.util.Iterator;
 import org.w3c.dom.NodeList;
+import com.airoom.secureagent.log.LogManager;
+import com.airoom.secureagent.log.HttpLogger;
 
 public class ImageStegoDecoder {
 
-    public static String decode(String inputImagePath) {
-        try (ImageInputStream iis = ImageIO.createImageInputStream(new File(inputImagePath))) {
-            // 1) PNG Reader 준비
-            Iterator<ImageReader> readers = ImageIO.getImageReadersByFormatName("png");
-            ImageReader reader = readers.next();
-            reader.setInput(iis, true);
+    private static final String KEYWORD = "StegoPayload";
 
-            // 2) 메타데이터 가져오기
-            IIOMetadata metadata;
-            try {
-                metadata = reader.getImageMetadata(0);
-            } catch (Exception e) {
-                // 메타데이터 자체를 못 읽어오면 곧바로 실패 처리
-                System.err.println("[ImageStegoDecoder] 추출 중 오류 발생: 삽입된 Stego 정보가 존재하지 않습니다.");
-                e.printStackTrace();
+    public static String decode(String path) {
+        String lower = path.toLowerCase();
+
+        try {
+            if (lower.endsWith(".png"))
+                return decodePng(path);
+            else if (lower.matches(".*\\.(jpe?g)$"))
+                return decodeJpeg(path);
+            else {
+                log("[Decode] 형식 미지원", path);
                 return null;
             }
-            String nativeFormat = metadata.getNativeMetadataFormatName();
-            IIOMetadataNode root = (IIOMetadataNode) metadata.getAsTree(nativeFormat);
-
-            // 3) tEXtEntry 찾기
-            NodeList list = root.getElementsByTagName("tEXtEntry");
-            for (int i = 0; i < list.getLength(); i++) {
-                IIOMetadataNode entry = (IIOMetadataNode) list.item(i);
-                if ("StegoPayload".equals(entry.getAttribute("keyword"))) {
-                    // 4) Base64 → byte[] → AES 복호화
-                    String base64 = entry.getAttribute("value");
-                    byte[] encrypted = Base64.getDecoder().decode(base64);
-                    return StegoCryptoUtil.decryptFromBytes(encrypted);
-                }
-            }
-
-            throw new IllegalStateException("삽입된 Stego 정보를 찾지 못했습니다.");
         } catch (Exception e) {
-            System.err.println("[ImageStegoDecoder] 추출 중 오류 발생: " + e.getMessage());
-            e.printStackTrace();
+            log("[Decode] 복호화 오류: " + e.getMessage(), path);
             return null;
         }
+    }
+
+    /* ---------- PNG ---------- */
+    private static String decodePng(String path) {
+        try (ImageInputStream iis = ImageIO.createImageInputStream(new File(path))) {
+            ImageReader r = ImageIO.getImageReadersByFormatName("png").next();
+            r.setInput(iis, true);
+
+            IIOMetadata meta = r.getImageMetadata(0);            // (1) 메타 읽기
+            String fmt = meta.getNativeMetadataFormatName();
+            IIOMetadataNode root = (IIOMetadataNode) meta.getAsTree(fmt);
+
+            NodeList list = root.getElementsByTagName("tEXtEntry");
+            for (int i = 0; i < list.getLength(); i++) {         // (2) 키 찾기
+                IIOMetadataNode n = (IIOMetadataNode) list.item(i);
+                if (KEYWORD.equals(n.getAttribute("keyword"))) {
+                    String b64 = n.getAttribute("value");
+                    byte[] enc = Base64.getDecoder().decode(b64);
+                    return StegoCryptoUtil.decryptFromBytes(enc);
+                }
+            }
+            log("[Decode] Stego 키 없음", path);
+            return null;
+
+        } catch (Exception e) {
+            log("[Decode] 메타데이터 읽기 실패: " + e.getMessage(), path);
+            return null;
+        }
+    }
+
+    /* ---------- JPEG ---------- */
+    private static String decodeJpeg(String path) {
+        try (ImageInputStream iis = ImageIO.createImageInputStream(new File(path))) {
+            ImageReader r = ImageIO.getImageReadersByFormatName("jpeg").next();
+            r.setInput(iis, true);
+
+            IIOMetadata meta = r.getImageMetadata(0);
+            IIOMetadataNode root = (IIOMetadataNode) meta.getAsTree(
+                    meta.getNativeMetadataFormatName());
+
+            NodeList coms = root.getElementsByTagName("com");
+            for (int i = 0; i < coms.getLength(); i++) {
+                String comment = ((IIOMetadataNode) coms.item(i)).getAttribute("comment");
+                if (comment.startsWith(KEYWORD + ":")) {
+                    String b64 = comment.substring(KEYWORD.length() + 1);
+                    byte[] enc = Base64.getDecoder().decode(b64);
+                    return StegoCryptoUtil.decryptFromBytes(enc);
+                }
+            }
+            log("[Decode] Stego 키 없음", path);
+            return null;
+
+        } catch (Exception e) {
+            log("[Decode] 메타데이터 읽기 실패: " + e.getMessage(), path);
+            return null;
+        }
+    }
+
+    /* ---------- 공통 로그 ---------- */
+    private static void log(String msg, String file) {
+        String line = msg + " → " + file;
+        LogManager.writeLog(line);
+        HttpLogger.sendLog(line);
+        System.err.println(line);
     }
 }
