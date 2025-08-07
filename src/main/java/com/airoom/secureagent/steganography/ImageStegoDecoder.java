@@ -6,7 +6,8 @@ import javax.imageio.metadata.IIOMetadataNode;
 import javax.imageio.stream.ImageInputStream;
 import java.io.File;
 import java.util.Base64;
-import java.util.Iterator;
+
+import com.airoom.secureagent.util.CryptoUtil;
 import org.w3c.dom.NodeList;
 import com.airoom.secureagent.log.LogManager;
 import com.airoom.secureagent.log.HttpLogger;
@@ -49,7 +50,7 @@ public class ImageStegoDecoder {
                 if (KEYWORD.equals(n.getAttribute("keyword"))) {
                     String b64 = n.getAttribute("value");
                     byte[] enc = Base64.getDecoder().decode(b64);
-                    return StegoCryptoUtil.decryptFromBytes(enc);
+                    return CryptoUtil.decryptFromBytes(enc);
                 }
             }
             log("[Decode] Stego 키 없음", path);
@@ -77,7 +78,7 @@ public class ImageStegoDecoder {
                 if (comment.startsWith(KEYWORD + ":")) {
                     String b64 = comment.substring(KEYWORD.length() + 1);
                     byte[] enc = Base64.getDecoder().decode(b64);
-                    return StegoCryptoUtil.decryptFromBytes(enc);
+                    return CryptoUtil.decryptFromBytes(enc);
                 }
             }
             log("[Decode] Stego 키 없음", path);

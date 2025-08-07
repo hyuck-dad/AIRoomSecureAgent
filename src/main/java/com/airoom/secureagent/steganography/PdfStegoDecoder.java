@@ -1,5 +1,6 @@
 package com.airoom.secureagent.steganography;
 
+import com.airoom.secureagent.util.CryptoUtil;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 
@@ -22,7 +23,7 @@ public class PdfStegoDecoder {
                 throw new IllegalStateException("삽입된 Stego 정보가 존재하지 않습니다.");
             }
 
-            String decrypted = StegoCryptoUtil.decrypt(encrypted);
+            String decrypted = CryptoUtil.decrypt(encrypted);
             System.out.println("[PdfStegoDecoder] 복호화 성공: " + decrypted);
             return decrypted;
 

@@ -1,5 +1,7 @@
 package com.airoom.secureagent.steganography;
 
+import com.airoom.secureagent.util.CryptoUtil;
+
 import javax.imageio.*;
 import javax.imageio.metadata.IIOMetadata;
 import javax.imageio.metadata.IIOMetadataNode;
@@ -27,7 +29,7 @@ public class ImageStegoEncoder {
 
         try {
             // 1) AES로 암호화 → byte[] → Base64 문자열
-            byte[] encrypted = StegoCryptoUtil.encryptToBytes(payload);
+            byte[] encrypted = CryptoUtil.encryptToBytes(payload);
             String base64 = Base64.getEncoder().encodeToString(encrypted);
 
             // 2) 원본 이미지 로드

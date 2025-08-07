@@ -1,10 +1,10 @@
 package com.airoom.secureagent.steganography;
 
+import com.airoom.secureagent.util.CryptoUtil;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 
 import java.io.File;
-import java.io.IOException;
 
 public class PdfStegoEncoder {
 
@@ -35,7 +35,7 @@ public class PdfStegoEncoder {
             }
 
             // AES 암호화된 삽입 정보
-            String encrypted = StegoCryptoUtil.encrypt(payload);
+            String encrypted = CryptoUtil.encrypt(payload);
 
             // PDF 메타데이터 객체 가져오기
             PDDocumentInformation info = document.getDocumentInformation();

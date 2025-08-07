@@ -1,5 +1,7 @@
 package com.airoom.secureagent.steganography;
 
+import com.airoom.secureagent.util.CryptoUtil;
+
 import javax.imageio.*;
 import javax.imageio.metadata.IIOMetadata;
 import javax.imageio.metadata.IIOMetadataNode;
@@ -12,7 +14,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Base64;
-import java.util.Iterator;
 
 /**
  * PNG  : tEXt  "StegoPayload"
@@ -34,7 +35,7 @@ public class ImageStegoWithWatermarkEncoder {
 
             /* 0) 암호화 → Base64 */
             String base64 = Base64.getEncoder()
-                    .encodeToString(StegoCryptoUtil.encryptToBytes(payload));
+                    .encodeToString(CryptoUtil.encryptToBytes(payload));
 
             /* 1) 원본 이미지 */
             BufferedImage src = ImageIO.read(new File(input));
