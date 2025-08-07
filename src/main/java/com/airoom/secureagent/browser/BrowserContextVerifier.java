@@ -4,30 +4,41 @@ import com.sun.jna.Native;
 import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef;
 
+import java.util.Arrays;
+
 public class BrowserContextVerifier {
 
     // 타겟 도메인 (나중에 config로 분리 가능)
-    private static final String TARGET_DOMAIN_KEYWORD = "naver";
+    // 추후에, 우리팀이 개발한 사이트가 어떤 title 값으로 나타나는지 파악해야겠다.
+    private static final String[] TARGET_KEYWORDS = {"naver", "네이버", "naver.com"};
 
-    public static boolean isTargetBrowserActive() {
-        char[] buffer = new char[1024];
-        WinDef.HWND hwnd = User32.INSTANCE.GetForegroundWindow();
-        User32.INSTANCE.GetWindowText(hwnd, buffer, 1024);
-        String title = Native.toString(buffer);
+    public static boolean isTargetBrowserOpenAnywhere() {
+        final boolean[] targetFound = {false};
 
-        // [DEBUG] 현재 활성 윈도우 제목 출력
-        System.out.println("[DEBUG] 활성 창 제목: " + title);
+        User32.INSTANCE.EnumWindows((hwnd, pointer) -> {
+            if (!User32.INSTANCE.IsWindowVisible(hwnd)) return true;
 
-        if (title == null || title.isEmpty()) return false;
+            char[] windowText = new char[1024];
+            User32.INSTANCE.GetWindowText(hwnd, windowText, 1024);
+            String title = Native.toString(windowText).toLowerCase();
 
-        // 브라우저 확인 (크롬, 엣지, 파이어폭스 등 대중적인 브라우저 명 포함 여부)
-        String lower = title.toLowerCase();
-        boolean isBrowser = lower.contains("chrome") || lower.contains("edge") ||
-                lower.contains("firefox") || lower.contains("safari") ||
-                lower.contains("opera");
+            if (title.isEmpty()) return true;
 
-        boolean containsTarget = lower.contains(TARGET_DOMAIN_KEYWORD);
+            boolean isBrowser = title.contains("chrome") || title.contains("edge") ||
+                    title.contains("firefox") || title.contains("opera");
 
-        return isBrowser && containsTarget;
+            boolean containsTarget = Arrays.stream(TARGET_KEYWORDS)
+                    .anyMatch(keyword -> title.contains(keyword.toLowerCase()));
+
+            if (isBrowser && containsTarget) {
+                System.out.println("[DEBUG] 감지된 브라우저 창 타이틀: " + title);
+                targetFound[0] = true;
+                return false; // 더 이상 검사하지 않고 중단
+            }
+
+            return true; // 다음 창으로 계속 검사
+        }, null);
+
+        return targetFound[0];
     }
 }
