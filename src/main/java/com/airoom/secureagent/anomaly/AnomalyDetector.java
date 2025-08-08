@@ -41,10 +41,15 @@ public class AnomalyDetector {
     private static final long COUNT_WINDOW_STEGO_PDF_MS = Duration.ofSeconds(60).toMillis();
     private static final int  COUNT_THRESHOLD_STEGO_PDF  = 10;
 
-    // RECORDING: 5분 이상 지속 시 이상
-    private static final long RECORDING_ALERT_AFTER_MS = Duration.ofMinutes(5).toMillis();
-    // RECORDING: 이벤트 끊긴 뒤 세션 종료로 간주할 gap
-    private static final long RECORDING_INACTIVE_GAP_MS = Duration.ofSeconds(30).toMillis();
+//    // RECORDING: 5분 이상 지속 시 이상
+//    private static final long RECORDING_ALERT_AFTER_MS = Duration.ofMinutes(5).toMillis();
+//    // RECORDING: 이벤트 끊긴 뒤 세션 종료로 간주할 gap
+//    private static final long RECORDING_INACTIVE_GAP_MS = Duration.ofSeconds(30).toMillis();
+    // RECORDING: 30초 이상 지속 시 이상 (테스트 전용)
+    private static final long RECORDING_ALERT_AFTER_MS   = Duration.ofSeconds(30).toMillis();
+    // RECORDING: 이벤트 끊긴 뒤 세션 종료 간주 간격 (tasklist 재감지 간격 10s 보다 크게)
+    private static final long RECORDING_INACTIVE_GAP_MS  = Duration.ofSeconds(25).toMillis();
+
 
     // 동일 (userId + type) 알림 쿨다운(중복 노이즈 방지)
     private static final long ALERT_COOLDOWN_MS = Duration.ofMinutes(1).toMillis();
@@ -96,23 +101,35 @@ public class AnomalyDetector {
             long cutoff = now - windowMs;
             while (!q.isEmpty() && q.peekFirst() < cutoff) q.removeFirst();
 
-            if (q.size() >= threshold && cooldownOk(key, now)) {
-                // 샘플 몇 개만 가져다 로그에 실어주기(소스/경로)
-                String sample = shorten(ev.getSource()) + "@" + shorten(ev.getPageOrPath());
-                int count = q.size();
+            if (q.size() >= threshold) {
+                if (cooldownOk(key, now)) {
+                    // 샘플 몇 개만 가져다 로그에 실어주기(소스/경로)
+                    String sample = shorten(ev.getSource()) + "@" + shorten(ev.getPageOrPath());
+                    int count = q.size();
 
-                // Alert 전송
-                AlertSender.sendCountAlert(
-                        ev.getUserId(),
-                        ev.getType(),
-                        count,
-                        (int) (windowMs / 1000),
-                        sample
-                );
+                    // Alert 전송
+                    AlertSender.sendCountAlert(
+                            ev.getUserId(),
+                            ev.getType(),
+                            count,
+                            (int) (windowMs / 1000),
+                            sample
+                    );
 
-                // 중복 알림 억제: 큐를 비우거나, 쿨다운만 갱신하여 중복 방지
-                lastAlertAt.put(key, now);
-                q.clear();
+                    // 중복 알림 억제
+                    lastAlertAt.put(key, now);
+                    q.clear();
+                } else {
+                    long remainSec = Math.max(
+                            0,
+                            (ALERT_COOLDOWN_MS - (now - lastAlertAt.getOrDefault(key, 0L))) / 1000
+                    );
+                    LogManager.writeLog("[ALERT][SUPPRESSED][COOLDOWN] user=" + ev.getUserId()
+                            + " type=" + ev.getType()
+                            + " count=" + q.size()
+                            + " windowSec=" + (windowMs / 1000)
+                            + " remainSec=" + remainSec);
+                }
             }
         }
     }
@@ -138,20 +155,34 @@ public class AnomalyDetector {
                 return new RecordingSession(now, now, ev.getSource(), false);
             }
 
-            // 기준 시간 초과 && 아직 알림 안 보냄 && 쿨다운 확인
+            // 기준 시간 초과 && 아직 알림 안 보냄 && 쿨다운 확인/기록
             long duration = updated.lastSeenTs() - updated.startTs();
-            if (duration >= RECORDING_ALERT_AFTER_MS && !updated.alerted() && cooldownOk(key(user, EventType.RECORDING), now)) {
-                AlertSender.sendRecordingAlert(
-                        user,
-                        (int) (duration / 1000),
-                        updated.source()
-                );
-                lastAlertAt.put(key(user, EventType.RECORDING), now);
-                return updated.markAlerted();
+            String k = key(user, EventType.RECORDING);
+
+            if (duration >= RECORDING_ALERT_AFTER_MS && !updated.alerted()) {
+                if (cooldownOk(k, now)) {
+                    AlertSender.sendRecordingAlert(
+                            user,
+                            (int) (duration / 1000),
+                            updated.source()
+                    );
+                    lastAlertAt.put(k, now);
+                    return updated.markAlerted();
+                } else {
+                    long remainSec = Math.max(
+                            0,
+                            (ALERT_COOLDOWN_MS - (now - lastAlertAt.getOrDefault(k, 0L))) / 1000
+                    );
+                    LogManager.writeLog("[ALERT][SUPPRESSED][COOLDOWN] user=" + user
+                            + " type=RECORDING"
+                            + " durationSec=" + (duration / 1000)
+                            + " remainSec=" + remainSec);
+                }
             }
             return updated;
         });
     }
+
 
     /* ============================
      * 6) 헬퍼
