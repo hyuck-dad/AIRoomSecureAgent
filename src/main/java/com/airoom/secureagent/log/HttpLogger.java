@@ -8,6 +8,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
+import java.util.concurrent.ThreadLocalRandom;
+
 public class HttpLogger {
 
     private static final int CONNECT_TIMEOUT_MS = 5000;
@@ -36,16 +38,47 @@ public class HttpLogger {
     private static String stripTrailingSlash(String s) { return s.endsWith("/") ? s.substring(0, s.length() - 1) : s; }
     private static String ensureLeadingSlash(String s) { return s.startsWith("/") ? s : "/" + s; }
 
+    private static boolean shouldForceFail() {
+        String always = System.getProperty("aidt.forceNetFail", System.getenv("AIDT_FORCE_NET_FAIL"));
+        if (always != null && always.equalsIgnoreCase("always")) return true;
+
+        String p = System.getProperty("aidt.forceNetFailPercent", System.getenv("AIDT_FORCE_NET_FAIL_PERCENT"));
+        if (p != null) {
+            try {
+                int rate = Integer.parseInt(p);
+                if (rate > 0 && ThreadLocalRandom.current().nextInt(100) < Math.min(rate, 100)) return true;
+            } catch (NumberFormatException ignore) {}
+        }
+        return false;
+    }
+
+    private static int getConnectTimeout() {
+        String v = System.getProperty("aidt.net.connectTimeoutMs", System.getenv("AIDT_NET_CONNECT_TIMEOUT_MS"));
+        try { return (v != null) ? Integer.parseInt(v) : CONNECT_TIMEOUT_MS; } catch (Exception ignore) { return CONNECT_TIMEOUT_MS; }
+    }
+    private static int getReadTimeout() {
+        String v = System.getProperty("aidt.net.readTimeoutMs", System.getenv("AIDT_NET_READ_TIMEOUT_MS"));
+        try { return (v != null) ? Integer.parseInt(v) : READ_TIMEOUT_MS; } catch (Exception ignore) { return READ_TIMEOUT_MS; }
+    }
+
     /** 성공 시 true, 실패 시 false (실패하면 오프라인 스풀로 적재) */
     public static boolean sendLog(String message) {
+
+        // 테스트용 강제 실패
+        if (shouldForceFail()) {
+            try { if (offlineStore != null) offlineStore.append(message); } catch (Exception e) { e.printStackTrace(); }
+            System.out.println("[HttpLogger] TEST force-fail → 스풀 적재");
+            return false;
+        }
+
         String endpoint = null;
         try {
             endpoint = getBaseUrl() + getLogPath();
             URL url = new URL(endpoint);
 
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            conn.setReadTimeout(READ_TIMEOUT_MS);
+            conn.setConnectTimeout(getConnectTimeout());
+            conn.setReadTimeout(getReadTimeout());
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "text/plain; charset=UTF-8");
@@ -78,4 +111,8 @@ public class HttpLogger {
         }
         return false;
     }
+
+
+
+
 }
