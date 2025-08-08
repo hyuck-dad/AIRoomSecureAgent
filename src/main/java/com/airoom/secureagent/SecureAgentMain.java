@@ -10,6 +10,9 @@ import com.airoom.secureagent.server.StatusServer;
 import com.airoom.secureagent.steganography.ImageStegoDecoder;
 import com.airoom.secureagent.steganography.PdfStegoDecoder;
 import com.airoom.secureagent.log.LogManager;
+import com.airoom.secureagent.log.FileSpoolStore;
+import com.airoom.secureagent.log.HttpLogger;
+import com.airoom.secureagent.network.RetryWorker;
 
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
@@ -32,10 +35,18 @@ public class SecureAgentMain {
             /* 1) 로컬 상태 서버 시작 (로그 수신 엔드포인트 포함) */
             StatusServer.startServer();
 
+            /* 1.5) 오프라인 스풀 + 재전송 워커 초기화 */
+            FileSpoolStore spool = new FileSpoolStore();
+            spool.recoverOrphanedSending();           // 이전 크래시 복구, 이전 실행 중단 복구 -  비정상 종료로 남아있을 수 있는 sending 파일 복구
+            HttpLogger.setOfflineStore(spool);        // 실패 시 자동 스풀
+            RetryWorker retryWorker = new RetryWorker(spool);
+            retryWorker.start();                      // 주기 재전송 시작
+            StatusServer.registerFlushCallback(retryWorker::flushNow); // /flush 트리거
+            retryWorker.flushNow();                   // 시작 직후 1회 비우기 시도
+
             /* 2) 캡처 감지(키보드 + 프로세스) */
             // - PrintScreen 감시 스레드
             CaptureDetector.startCaptureWatch();
-
             // - 프로세스(OBS/GameBar 등) 5초 주기 감시
             ScheduledExecutorService es = Executors.newScheduledThreadPool(2);
             es.scheduleAtFixedRate(ProcessMonitor::detect, 0, 5, TimeUnit.SECONDS);
