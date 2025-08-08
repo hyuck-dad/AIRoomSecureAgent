@@ -1,5 +1,8 @@
 package com.airoom.secureagent.capture;
 
+import com.airoom.secureagent.anomaly.EventType;
+import com.airoom.secureagent.anomaly.LogEmitter;
+import com.airoom.secureagent.anomaly.LogEvent;
 import com.airoom.secureagent.log.HttpLogger;
 import com.airoom.secureagent.log.LogManager;
 import com.sun.jna.Library;
@@ -20,14 +23,31 @@ public class CaptureDetector {
             while (true) {
                 try {
                     // 1. PrintScreen 키 감지
+//                    if (User32.INSTANCE.GetAsyncKeyState(0x2C) != 0) {
+//                        String msg = "[키보드 감지] PrintScreen 키 입력 감지됨";
+//                        System.out.println("[SecureAgent] " + msg);
+//
+//                        LogManager.writeLog(msg);
+//                        HttpLogger.sendLog(msg);
+//
+//                        Thread.sleep(1000); // 중복 감지 방지
+//                    }
+
                     if (User32.INSTANCE.GetAsyncKeyState(0x2C) != 0) {
                         String msg = "[키보드 감지] PrintScreen 키 입력 감지됨";
                         System.out.println("[SecureAgent] " + msg);
 
-                        LogManager.writeLog(msg);
-                        HttpLogger.sendLog(msg);
+                        // 구조화 이벤트 + 라인 로그 동시 발행
+                        LogEvent ev = LogEvent.of(
+                                EventType.CAPTURE,
+                                "PrintScreen",
+                                /* pageTitle */ "-",   // TODO: 추후 WindowUtil 연동
+                                null,
+                                LogManager.getUserId()
+                        );
+                        LogEmitter.emit(ev, msg);
 
-                        Thread.sleep(1000); // 중복 감지 방지
+                        Thread.sleep(1000);
                     }
 
                     // 2. 캡처/녹화 프로그램 실행 감지

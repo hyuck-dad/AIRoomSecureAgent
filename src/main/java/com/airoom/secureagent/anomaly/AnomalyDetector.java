@@ -33,4 +33,13 @@ public class AnomalyDetector {
             timestamps.clear(); // 중복 탐지 방지
         }
     }
+
+    // 다음 단계에서: userId별 {CAPTURE/STEGO_INSERT} → Deque<Long> (시간 윈도)
+    //               userId별 RECORDING → 상태머신(시작~지속시간)
+    public static void consume(LogEvent ev) {
+        // TODO: 구현 예정
+        // 1) 메모리 큐 업데이트
+        // 2) 임계치 도달 시 이상 알림 생성
+        // 3) dedupeId 생성 후 HttpLogger.sendLog(...) or 전용 AlertSender로 전송
+    }
 }

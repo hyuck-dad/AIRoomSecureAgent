@@ -7,6 +7,9 @@ import com.airoom.secureagent.steganography.ImageStegoWithWatermarkEncoder;
 import com.airoom.secureagent.steganography.PdfStegoWithWatermarkEncoder;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.airoom.secureagent.anomaly.EventType;
+import com.airoom.secureagent.anomaly.LogEmitter;
+import com.airoom.secureagent.anomaly.LogEvent;
 
 import java.nio.channels.*;
 import java.nio.file.*;
@@ -73,9 +76,27 @@ public class StegoDispatcher {
         }
 
         /* ========== 4. 로그 & 디코딩 확인 ========== */
+//        if (ok) {
+//            String log = "[Stego] 삽입 완료 → " + file;
+//            LogManager.writeLog(log); HttpLogger.sendLog(log);
+//
+//            if (SecureAgentMain.TEST_MODE) {
+//                String decoded = SecureAgentMain.decodeOnce(file);
+//                System.out.println("[Stego] 디코딩 확인: " + decoded);
+//            }
+//        } else {
+//            LogManager.writeLog("[Stego] 삽입 실패 → " + file);
+//        }
         if (ok) {
             String log = "[Stego] 삽입 완료 → " + file;
-            LogManager.writeLog(log); HttpLogger.sendLog(log);
+            LogEvent ev = LogEvent.of(
+                    EventType.STEGO_INSERT,
+                    isImage(file) ? "image" : (isPdf(file) ? "pdf" : "unknown"),
+                    file.toAbsolutePath().toString(),
+                    null,
+                    LogManager.getUserId()
+            );
+            LogEmitter.emit(ev, log);
 
             if (SecureAgentMain.TEST_MODE) {
                 String decoded = SecureAgentMain.decodeOnce(file);
