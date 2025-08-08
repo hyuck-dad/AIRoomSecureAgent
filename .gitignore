@@ -39,3 +39,10 @@ build/
 
 log/**
 test-files/**
+
+/log/
+/target/
+/*.iml
+/.idea/
+/**/.DS_Store
+**/spool/
