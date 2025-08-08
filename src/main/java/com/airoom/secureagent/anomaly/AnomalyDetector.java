@@ -33,9 +33,13 @@ public class AnomalyDetector {
     private static final long COUNT_WINDOW_CAPTURE_MS = Duration.ofSeconds(30).toMillis();
     private static final int  COUNT_THRESHOLD_CAPTURE  = 5;
 
-    // STEGO_INSERT(= 다운로드 유사): 60초 내 10회 이상
-    private static final long COUNT_WINDOW_STEGO_MS   = Duration.ofSeconds(60).toMillis();
-    private static final int  COUNT_THRESHOLD_STEGO   = 10;
+    // STEGO_IMAGE: 60초 내 10회 이상
+    private static final long COUNT_WINDOW_STEGO_IMAGE_MS = Duration.ofSeconds(60).toMillis();
+    private static final int  COUNT_THRESHOLD_STEGO_IMAGE  = 10;
+
+    // STEGO_PDF: 60초 내 10회 이상 (원하면 값 분리해서 튜닝)
+    private static final long COUNT_WINDOW_STEGO_PDF_MS = Duration.ofSeconds(60).toMillis();
+    private static final int  COUNT_THRESHOLD_STEGO_PDF  = 10;
 
     // RECORDING: 5분 이상 지속 시 이상
     private static final long RECORDING_ALERT_AFTER_MS = Duration.ofMinutes(5).toMillis();
@@ -69,7 +73,8 @@ public class AnomalyDetector {
 
         switch (ev.getType()) {
             case CAPTURE -> handleCountEvent(ev, COUNT_WINDOW_CAPTURE_MS, COUNT_THRESHOLD_CAPTURE);
-            case STEGO_INSERT -> handleCountEvent(ev, COUNT_WINDOW_STEGO_MS, COUNT_THRESHOLD_STEGO);
+            case STEGO_IMAGE -> handleCountEvent(ev, COUNT_WINDOW_STEGO_IMAGE_MS, COUNT_THRESHOLD_STEGO_IMAGE);
+            case STEGO_PDF   -> handleCountEvent(ev, COUNT_WINDOW_STEGO_PDF_MS,   COUNT_THRESHOLD_STEGO_PDF);
             case RECORDING -> handleRecordingEvent(ev);
             default -> {
                 // DECODE_SUCCESS / DECODE_FAIL 등은 현재 탐지에 사용하지 않음
