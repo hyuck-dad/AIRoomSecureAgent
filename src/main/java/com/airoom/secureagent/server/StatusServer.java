@@ -1,5 +1,6 @@
 package com.airoom.secureagent.server;
 
+import com.airoom.secureagent.util.CryptoUtil;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -67,8 +68,10 @@ public class StatusServer {
             try {
                 if ("POST".equals(exchange.getRequestMethod())) {
                     InputStream is = exchange.getRequestBody();
-                    String message = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                    System.out.println("[서버 수신 로그] " + message);
+                    String encrypted = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                    String decrypted = CryptoUtil.decrypt(encrypted);
+                    System.out.println("[서버 수신 로그] " + decrypted);
+
 
                     exchange.sendResponseHeaders(200, 0);
                     exchange.getResponseBody().close();

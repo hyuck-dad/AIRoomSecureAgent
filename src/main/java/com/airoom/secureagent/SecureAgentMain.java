@@ -1,178 +1,94 @@
 package com.airoom.secureagent;
 
+import com.airoom.secureagent.anomaly.EventType;
+import com.airoom.secureagent.anomaly.LogEmitter;
+import com.airoom.secureagent.anomaly.LogEvent;
 import com.airoom.secureagent.capture.CaptureDetector;
 import com.airoom.secureagent.capture.ProcessMonitor;
 import com.airoom.secureagent.monitor.GlobalWatcher;
-import com.airoom.secureagent.monitor.PrintHookBridge;
 import com.airoom.secureagent.server.StatusServer;
-import com.airoom.secureagent.steganography.*;
-import com.airoom.secureagent.watermark.WatermarkOverlay;
-import com.airoom.secureagent.browser.BrowserContextVerifier;
+import com.airoom.secureagent.steganography.ImageStegoDecoder;
+import com.airoom.secureagent.steganography.PdfStegoDecoder;
+import com.airoom.secureagent.log.LogManager;
 
-
-import java.io.File;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 public class SecureAgentMain {
 
-    public static final boolean TEST_MODE = true;
-    // true → 테스트 / false → 운영
+    /** 테스트/데모 플래그 */
+    public static final boolean TEST_MODE = true;   // true=테스트용 좁은 경로 감시
+    /** 선택적 스모크 테스트. 실행 시 -Daidt.smoke=true 로 주면 자동 가짜 이벤트 주입 */
+    private static final boolean SMOKE_TEST = true;
 
     public static void main(String[] args) {
         try {
-            System.out.println("[SecureAgent] 보안 에이전트가 시작되었습니다.");
+            System.out.println("[SecureAgent] 보안 에이전트가 시작되었습니다. TEST_MODE=" + TEST_MODE);
 
-            /* 1) 프로세스·CPU 감시는 기존 그대로 */
+            /* 1) 로컬 상태 서버 시작 (로그 수신 엔드포인트 포함) */
+            StatusServer.startServer();
+
+            /* 2) 캡처 감지(키보드 + 프로세스) */
+            // - PrintScreen 감시 스레드
+            CaptureDetector.startCaptureWatch();
+
+            // - 프로세스(OBS/GameBar 등) 5초 주기 감시
             ScheduledExecutorService es = Executors.newScheduledThreadPool(2);
             es.scheduleAtFixedRate(ProcessMonitor::detect, 0, 5, TimeUnit.SECONDS);
 
-            /* 2) 감시 루트 정의 */
+            /* 3) 파일 시스템 감시(GlobalWatcher) */
             Path home = Paths.get(System.getProperty("user.home"));
-            List<Path> watchRoots = new ArrayList<>(       // ArrayList 로 만들어야 add() 가 가능
+            List<Path> watchRoots = new ArrayList<>(
                     TEST_MODE
-                            ? List.of(                               // ── 테스트 전용 최소 범위
+                            ? List.of(
                             home.resolve("Downloads"),
                             home.resolve("Documents"),
                             home.resolve("Desktop")
                     )
-                            : List.of(                            // ── 운영 모드 : 우선 홈 전체
-                            home
-                    )
+                            : List.of(home) // 운영: 홈 전체
             );
-            // TEST_MODE=true → 3개 폴더만 감시
-            // TEST_MODE=false → 홈 + D:, E:\ …까지 자동 포함
-
-            /* 1-1) 운영 모드일 때만 추가 드라이브(D:, E: …) 포함 */
             if (!TEST_MODE) {
+                // 운영일 때 추가 드라이브 포함(D:, E: ...)
                 for (Path root : FileSystems.getDefault().getRootDirectories()) {
                     if (!root.toString().equalsIgnoreCase("C:\\")) {
-                        watchRoots.add(root);               // ★ 여기서 추가
+                        watchRoots.add(root);
                     }
                 }
             }
 
-            /* 3) 전역 Watcher를 **백그라운드 스레드**로 구동 */
-            Executors.newSingleThreadExecutor().submit(() -> {
+            Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "fs-watcher");
+                t.setDaemon(true);
+                return t;
+            }).submit(() -> {
                 try { new GlobalWatcher(watchRoots).run(); }
                 catch (Exception e) { e.printStackTrace(); }
             });
 
-            /* Print → PDF 후킹, DLL 준비되면 주석 해제 */
-//        PrintHookBridge.init();
+            /* 4) 선택: 스모크 테스트 (가짜 이벤트로 탐지 파이프라인 빠르게 검증)
+                   실행 옵션 예)  java -Daidt.smoke=true -jar app.jar
+             */
+            if (SMOKE_TEST) {
+                Executors.newSingleThreadExecutor(r -> {
+                    Thread t = new Thread(r, "smoke");
+                    t.setDaemon(true);
+                    return t;
+                }).submit(SecureAgentMain::runSmokeTest);
+            }
 
-            /* 4) (선택) 로컬 상태 서버 – 이미 구현돼 있으면 유지 */
-            StatusServer.startServer();
-
-
-            // 워터마크 테스트 (발표 시 opacity = 0.3f -> 0.01f 로 시연)
-//        WatermarkOverlay.showOverlay("AIDT-2025-07-18-userId123", 0.3f);
-            // 실제 서비스는 0.005f 로 할 것 - 초저알파
-//        WatermarkOverlay.showOverlay("AIDT-2025-07-18-userId123", 0.005f);
-            // 개발 과정에서는 그냥 0.0f
-//        WatermarkOverlay.showOverlay("AIDT-2025-07-18-userId123", 0.0f);
-
-//        WatermarkOverlay.showOverlay("gotcha~! AIDT-2025-07-18-userId123", 0.8f); // 30% 투명도
-
-
-//            String data = "userId123|2025-07-22|hash=ABCD1234";
-//            String encrypted = StegoCryptoUtil.encrypt(data);
-//            String decrypted = StegoCryptoUtil.decrypt(encrypted);
-//
-//            System.out.println("암호화 결과: " + encrypted);
-//            System.out.println("복호화 결과: " + decrypted);
-
-//            // --- Stego 테스트 시작 ---
-//            String payload = "Stego삽입 테스트 중|2025-07-22|hash=A1B2C3";
-//
-//            // 이미지 경로
-//            String imageInput = "test-files/testImageJpg.jpg";
-//            String imageOutput = "test-files/output2.png";
-//
-//            // PDF 경로
-//            String pdfInput = "test-files/testPDF.pdf";
-//            String pdfOutput = "test-files/secured1.pdf";
-
-//            // 이미지 Stego 삽입 + 추출
-//            if (new File(imageInput).exists()) {
-//                ImageStegoEncoder.encode(imageInput, imageOutput, payload);
-//                String imageDecoded = ImageStegoDecoder.decode(imageOutput);
-//                System.out.println("[TEST] 이미지 복원 결과: " + imageDecoded);
-//            } else {
-//                System.out.println("[TEST] 이미지 파일이 존재하지 않습니다: " + imageInput);
-//            }
-//
-//            // PDF Stego 삽입 + 추출
-//            if (new File(pdfInput).exists()) {
-//                PdfStegoEncoder.embed(pdfInput, pdfOutput, payload);
-//                String pdfDecoded = PdfStegoDecoder.extract(pdfOutput);
-//                System.out.println("[TEST] PDF 복원 결과: " + pdfDecoded);
-//            } else {
-//                System.out.println("[TEST] PDF 파일이 존재하지 않습니다: " + pdfInput);
-//            }
-//
-//            // --- Stego 테스트 끝 ---
-
-//            ImageStegoWithWatermarkEncoder.encode(
-//                    "test-files/1.jpg",
-//                    "test-files/output1.png",
-//                    "userA|2025-07-22|hash=XYZ",
-//                    "YangJH Security",
-//                    0.9f  // 50% 0.5f 투명도  -> 15% 0.15f
-//            );
-//            String imageDecoded = ImageStegoDecoder.decode("test-files/output-watermarked.png");
-//            System.out.println("[TEST] 이미지 복원 결과: " + imageDecoded);
-//
-//            PdfStegoWithWatermarkEncoder.embed(
-//                    "test-files/testPDF.pdf",
-//                    "test-files/secured-watermarked.pdf",
-//                    "userA|2025-07-22|hash=XYZ",
-//                    "YangJH Security",
-//                    0.015f  // 50% 투명도
-//            );
-//            String pdfDecoded = PdfStegoDecoder.extract("test-files/secured-watermarked.pdf");
-//            System.out.println("[TEST] PDF 복원 결과: " + pdfDecoded);
-
-
-
-//            StatusServer.startServer();
-//            // 감시 스레드 시작
-//            new Thread(() -> {
-//                boolean isMonitoring = false;
-//
-//                while (true) {
-//                    boolean targetFound = BrowserContextVerifier.isTargetBrowserOpenAnywhere();
-//
-//                    if (targetFound && !isMonitoring) {
-//                        System.out.println("[SecureAgent] 타겟 브라우저 감지됨 → 감지 기능 시작");
-//                        isMonitoring = true;
-//                        // 감지 시작 로직 삽입
-//                    } else if (!targetFound && isMonitoring) {
-//                        System.out.println("[SecureAgent] 타겟 브라우저 종료됨 → 감지 기능 중단");
-//                        isMonitoring = false;
-//                        // 감지 중단 로직 삽입
-//                    }
-//
-//                    try {
-//                        Thread.sleep(3000); // 3초마다 감시
-//                    } catch (InterruptedException e) {
-//                        break;
-//                    }
-//                }
-//            }).start();
-//
+            /* 메인 스레드는 대기만 */
+            System.out.println("[SecureAgent] 초기화 완료. 감시 중… (SMOKE=" + SMOKE_TEST + ")");
         } catch (Exception e) {
-            System.err.println("서버 시작 중 오류: " + e.getMessage());
+            System.err.println("초기화 중 오류: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
-    /* === 파일 하나 즉시 복호화 === */
+    /* === 파일 하나 즉시 복호화(기존 유지) === */
     public static String decodeOnce(Path p) {
         String n = p.toString().toLowerCase();
         try {
@@ -185,5 +101,139 @@ public class SecureAgentMain {
         } catch (Exception e) {
             return "복호화 오류: " + e.getMessage();
         }
+    }
+
+    /* =========================
+     * 스모크 테스트 (한 번에 ALERT/SUPPRESS/ALERT 검증)
+     * ========================= */
+    private static void runSmokeTest() {
+        try {
+            final String user = safeUserId();
+
+            // AnomalyDetector 설정과 맞추기
+            final int COOLDOWN_SEC        = 20;   // ALERT_COOLDOWN_MS/1000
+            final int CAPTURE_THRESHOLD   = 5;    // 30s 윈도 내 5회
+            final int STEGO_THRESHOLD     = 10;   // 60s 윈도 내 10회
+            final int RECORDING_SECONDS   = 31;   // 30s 임계 + 1s
+            final int POST_ALERT_PINGS    = 5;    // ALERT 직후 쿨다운 내 추가 핑
+            final int INACTIVE_GAP_WAIT_S = 16;   // RECORDING_INACTIVE_GAP(15s) 초과 대기
+
+            System.out.println("[SecureAgent][SMOKE] === 시작 ===");
+            LogManager.writeLog("[SMOKE] 시작: ALERT→SUPPRESS→ALERT 흐름 점검 (쿨다운=" + COOLDOWN_SEC + "s)");
+
+            /* ========= CAPTURE ========= */
+            System.out.println("[SMOKE] CAPTURE 라운드#1 → 예상: ALERT 1회");
+            for (int i = 1; i <= CAPTURE_THRESHOLD; i++) {
+                emit(EventType.CAPTURE, "keyboard", "-", "PrintScreen#R1-" + i, user);
+                TimeUnit.MILLISECONDS.sleep(800);
+            }
+
+            System.out.println("[SMOKE] CAPTURE 라운드#2(쿨다운 내 재임계) → 예상: SUPPRESS");
+            for (int i = 1; i <= CAPTURE_THRESHOLD; i++) {
+                emit(EventType.CAPTURE, "keyboard", "-", "PrintScreen#R2-" + i, user);
+                TimeUnit.MILLISECONDS.sleep(800);
+            }
+
+            System.out.println("[SMOKE] CAPTURE 쿨다운 대기 " + (COOLDOWN_SEC + 2) + "s");
+            TimeUnit.SECONDS.sleep(COOLDOWN_SEC + 2);
+
+            System.out.println("[SMOKE] CAPTURE 라운드#3(쿨다운 종료 후) → 예상: ALERT 1회");
+            for (int i = 1; i <= CAPTURE_THRESHOLD; i++) {
+                emit(EventType.CAPTURE, "keyboard", "-", "PrintScreen#R3-" + i, user);
+                TimeUnit.MILLISECONDS.sleep(800);
+            }
+
+            /* ========= STEGO_IMAGE ========= */
+            System.out.println("[SMOKE] STEGO_IMAGE 라운드#1 → 예상: ALERT 1회");
+            for (int i = 1; i <= STEGO_THRESHOLD; i++) {
+                emit(EventType.STEGO_IMAGE, "image", "C:/Downloads/test(" + i + ").png", null, user);
+                TimeUnit.MILLISECONDS.sleep(300);
+            }
+
+            System.out.println("[SMOKE] STEGO_IMAGE 라운드#2(쿨다운 내 재임계) → 예상: SUPPRESS");
+            for (int i = 1; i <= STEGO_THRESHOLD; i++) {
+                emit(EventType.STEGO_IMAGE, "image", "C:/Downloads/test(" + (i + 10) + ").png", null, user);
+                TimeUnit.MILLISECONDS.sleep(300);
+            }
+
+            System.out.println("[SMOKE] STEGO_IMAGE 쿨다운 대기 " + (COOLDOWN_SEC + 2) + "s");
+            TimeUnit.SECONDS.sleep(COOLDOWN_SEC + 2);
+
+            System.out.println("[SMOKE] STEGO_IMAGE 라운드#3(쿨다운 종료 후) → 예상: ALERT 1회");
+            for (int i = 1; i <= STEGO_THRESHOLD; i++) {
+                emit(EventType.STEGO_IMAGE, "image", "C:/Downloads/test(" + (i + 20) + ").png", null, user);
+                TimeUnit.MILLISECONDS.sleep(300);
+            }
+
+            /* ========= STEGO_PDF ========= */
+            System.out.println("[SMOKE] STEGO_PDF 라운드#1 → 예상: ALERT 1회");
+            for (int i = 1; i <= STEGO_THRESHOLD; i++) {
+                emit(EventType.STEGO_PDF, "pdf", "C:/Downloads/test(" + i + ").pdf", null, user);
+                TimeUnit.MILLISECONDS.sleep(300);
+            }
+
+            System.out.println("[SMOKE] STEGO_PDF 라운드#2(쿨다운 내 재임계) → 예상: SUPPRESS");
+            for (int i = 1; i <= STEGO_THRESHOLD; i++) {
+                emit(EventType.STEGO_PDF, "pdf", "C:/Downloads/test(" + (i + 10) + ").pdf", null, user);
+                TimeUnit.MILLISECONDS.sleep(300);
+            }
+
+            System.out.println("[SMOKE] STEGO_PDF 쿨다운 대기 " + (COOLDOWN_SEC + 2) + "s");
+            TimeUnit.SECONDS.sleep(COOLDOWN_SEC + 2);
+
+            System.out.println("[SMOKE] STEGO_PDF 라운드#3(쿨다운 종료 후) → 예상: ALERT 1회");
+            for (int i = 1; i <= STEGO_THRESHOLD; i++) {
+                emit(EventType.STEGO_PDF, "pdf", "C:/Downloads/test(" + (i + 20) + ").pdf", null, user);
+                TimeUnit.MILLISECONDS.sleep(300);
+            }
+
+            /* ========= RECORDING ========= */
+            System.out.println("[SMOKE] RECORDING 세션#1 시작(≈" + RECORDING_SECONDS + "s) → 예상: ALERT 1회");
+            for (int i = 0; i < RECORDING_SECONDS; i++) {
+                emit(EventType.RECORDING, "obs64.exe", "-", "OBS_ACTIVE", user);
+                TimeUnit.SECONDS.sleep(1);
+            }
+
+            // ★ ALERT 직후에도 쿨다운 창(20s) 내 추가 핑 → AnomalyDetector가 SUPPRESS 1회 기록
+            System.out.println("[SMOKE] RECORDING 세션#1: ALERT 이후 쿨다운 내 추가 핑(" + POST_ALERT_PINGS + "s) → 예상: SUPPRESS 1회");
+            for (int i = 0; i < POST_ALERT_PINGS; i++) {
+                emit(EventType.RECORDING, "obs64.exe", "-", "OBS_ACTIVE", user);
+                TimeUnit.SECONDS.sleep(1);
+            }
+
+            // 세션 경계 넘기기(현재 INACTIVE_GAP=15s 가정)
+            System.out.println("[SMOKE] 세션 종료 유도 대기 (INACTIVE_GAP 초과: " + INACTIVE_GAP_WAIT_S + "s)");
+            TimeUnit.SECONDS.sleep(INACTIVE_GAP_WAIT_S);
+
+            System.out.println("[SMOKE] RECORDING 세션#2 시작(≈" + RECORDING_SECONDS + "s) → 예상: ALERT 1회");
+            for (int i = 0; i < RECORDING_SECONDS; i++) {
+                emit(EventType.RECORDING, "obs64.exe", "-", "OBS_ACTIVE", user);
+                TimeUnit.SECONDS.sleep(1);
+            }
+
+            System.out.println("[SMOKE] === 완료 ===  capture-log.txt 및 상태 서버 콘솔에서");
+            System.out.println("        - CAPTURE/STEGO: ALERT → SUPPRESS → ALERT");
+            System.out.println("        - RECORDING: ALERT 1회 + SUPPRESS 1회(세션#1), 그 후 세션#2 ALERT 1회");
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            System.err.println("[SMOKE] 오류: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+
+
+
+    /** 공용 이벤트 발행 헬퍼 */
+    private static void emit(EventType type, String source, String pageOrPath, String windowTitle, String user) {
+        LogEvent ev = LogEvent.of(type, source, pageOrPath, windowTitle, user);
+        String line = "[TEST] synthetic " + type + " → " + source + " | " + pageOrPath;
+        LogEmitter.emit(ev, line); // LogManager/HttpLogger/AnomalyDetector 흐름을 모두 태움
+    }
+
+    private static String safeUserId() {
+        try { return LogManager.getUserId(); }
+        catch (Throwable t) { return "user-unknown"; }
     }
 }

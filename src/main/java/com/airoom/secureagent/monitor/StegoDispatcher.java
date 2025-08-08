@@ -7,6 +7,9 @@ import com.airoom.secureagent.steganography.ImageStegoWithWatermarkEncoder;
 import com.airoom.secureagent.steganography.PdfStegoWithWatermarkEncoder;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.airoom.secureagent.anomaly.EventType;
+import com.airoom.secureagent.anomaly.LogEmitter;
+import com.airoom.secureagent.anomaly.LogEvent;
 
 import java.nio.channels.*;
 import java.nio.file.*;
@@ -59,12 +62,13 @@ public class StegoDispatcher {
         String payload = file.getFileName() + "|" + Instant.now().toEpochMilli();
         String wmText  = "AIDT";
         boolean ok = false;
-
+        boolean isImage = isImage(file);
+        boolean isPdf   = isPdf(file);
         try {
-            if (isImage(file)) {
+            if (isImage) {
                 ok = ImageStegoWithWatermarkEncoder.encode(
                         abs, abs, payload, wmText, WATERMARK_OPACITY);
-            } else if (isPdf(file)) {
+            } else if (isPdf) {
                 ok = PdfStegoWithWatermarkEncoder.embed(
                         abs, abs, payload, wmText, WATERMARK_OPACITY);
             }
@@ -73,9 +77,38 @@ public class StegoDispatcher {
         }
 
         /* ========== 4. 로그 & 디코딩 확인 ========== */
+//        if (ok) {
+//            String log = "[Stego] 삽입 완료 → " + file;
+//            LogManager.writeLog(log); HttpLogger.sendLog(log);
+//
+//            if (SecureAgentMain.TEST_MODE) {
+//                String decoded = SecureAgentMain.decodeOnce(file);
+//                System.out.println("[Stego] 디코딩 확인: " + decoded);
+//            }
+//        } else {
+//            LogManager.writeLog("[Stego] 삽입 실패 → " + file);
+//        }
+        /* ========== 4. 이벤트 발행 & 디코딩 확인 ========== */
         if (ok) {
             String log = "[Stego] 삽입 완료 → " + file;
-            LogManager.writeLog(log); HttpLogger.sendLog(log);
+
+            EventType type = isImage ? EventType.STEGO_IMAGE :
+                    isPdf   ? EventType.STEGO_PDF   :
+                            null; // 확장자 외: 발행하지 않음
+
+            if (type != null) {
+                LogEvent ev = LogEvent.of(
+                        type,
+                        isImage ? "image" : "pdf",                 // source
+                        file.toAbsolutePath().toString(),          // pageOrPath
+                        null,                                       // browserTitle (알 수 없으면 null)
+                        LogManager.getUserId()                      // 사용자ID (LogManager에 getter가 있어야 함)
+                );
+                LogEmitter.emit(ev, log);
+            } else {
+                // 혹시 모르는 확장자 — 단순 로그만
+                LogManager.writeLog(log);
+            }
 
             if (SecureAgentMain.TEST_MODE) {
                 String decoded = SecureAgentMain.decodeOnce(file);

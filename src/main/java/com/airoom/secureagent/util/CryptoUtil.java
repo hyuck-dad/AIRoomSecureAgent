@@ -1,10 +1,10 @@
-package com.airoom.secureagent.steganography;
+package com.airoom.secureagent.util;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
-public class StegoCryptoUtil {
+public class CryptoUtil {
 
     /*
 디코딩 중 AES 복호화 단계에서 Base64 디코딩이 실패했어. 문제는 StegoCryptoUtil.decrypt() 안에서 받은 byte 배열이 Base64로 인코딩된 유효한 문자열이 아니었다는 것이야.

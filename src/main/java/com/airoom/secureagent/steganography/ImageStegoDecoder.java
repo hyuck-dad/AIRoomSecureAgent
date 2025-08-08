@@ -6,10 +6,14 @@ import javax.imageio.metadata.IIOMetadataNode;
 import javax.imageio.stream.ImageInputStream;
 import java.io.File;
 import java.util.Base64;
-import java.util.Iterator;
+
+import com.airoom.secureagent.util.CryptoUtil;
 import org.w3c.dom.NodeList;
 import com.airoom.secureagent.log.LogManager;
 import com.airoom.secureagent.log.HttpLogger;
+import com.airoom.secureagent.anomaly.EventType;
+import com.airoom.secureagent.anomaly.LogEmitter;
+import com.airoom.secureagent.anomaly.LogEvent;
 
 public class ImageStegoDecoder {
 
@@ -49,7 +53,7 @@ public class ImageStegoDecoder {
                 if (KEYWORD.equals(n.getAttribute("keyword"))) {
                     String b64 = n.getAttribute("value");
                     byte[] enc = Base64.getDecoder().decode(b64);
-                    return StegoCryptoUtil.decryptFromBytes(enc);
+                    return CryptoUtil.decryptFromBytes(enc);
                 }
             }
             log("[Decode] Stego 키 없음", path);
@@ -77,7 +81,7 @@ public class ImageStegoDecoder {
                 if (comment.startsWith(KEYWORD + ":")) {
                     String b64 = comment.substring(KEYWORD.length() + 1);
                     byte[] enc = Base64.getDecoder().decode(b64);
-                    return StegoCryptoUtil.decryptFromBytes(enc);
+                    return CryptoUtil.decryptFromBytes(enc);
                 }
             }
             log("[Decode] Stego 키 없음", path);
@@ -90,10 +94,25 @@ public class ImageStegoDecoder {
     }
 
     /* ---------- 공통 로그 ---------- */
+//    private static void log(String msg, String file) {
+//        String line = msg + " → " + file;
+//        LogManager.writeLog(line);
+//        HttpLogger.sendLog(line);
+//        System.err.println(line);
+//    }
     private static void log(String msg, String file) {
         String line = msg + " → " + file;
-        LogManager.writeLog(line);
-        HttpLogger.sendLog(line);
+        EventType type = msg.contains("성공") ? EventType.DECODE_SUCCESS : EventType.DECODE_FAIL;
+
+        LogEvent ev = LogEvent.of(
+                type,
+                "image",
+                file,
+                msg,
+                LogManager.getUserId()
+        );
+        LogEmitter.emit(ev, line);
+
         System.err.println(line);
     }
 }

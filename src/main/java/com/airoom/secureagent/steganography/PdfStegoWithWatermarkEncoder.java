@@ -1,5 +1,6 @@
 package com.airoom.secureagent.steganography;
 
+import com.airoom.secureagent.util.CryptoUtil;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -34,7 +35,7 @@ public class PdfStegoWithWatermarkEncoder {
         try (PDDocument doc = PDDocument.load(orig.toFile())) {
 
             /* -------- 1) 메타데이터 -------- */
-            String encrypted = StegoCryptoUtil.encrypt(payload);
+            String encrypted = CryptoUtil.encrypt(payload);
             PDDocumentInformation info = doc.getDocumentInformation();
             info.setCustomMetadataValue(METADATA_KEY, encrypted);
             doc.setDocumentInformation(info);
