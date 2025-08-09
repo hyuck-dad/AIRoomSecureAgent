@@ -4,6 +4,8 @@ import com.airoom.secureagent.anomaly.EventType;
 import com.airoom.secureagent.anomaly.LogEmitter;
 import com.airoom.secureagent.anomaly.LogEvent;
 import com.airoom.secureagent.log.LogManager;
+import com.airoom.secureagent.payload.PayloadFactory;
+import com.airoom.secureagent.anomaly.AlertSender;
 
 import oshi.SystemInfo;
 import oshi.software.os.OSProcess;
@@ -116,7 +118,10 @@ public class ProcessMonitor {
                                     def.appName(),              // note: 보기 쉬운 앱 이름
                                     LogManager.getUserId()      // userId: 현재는 LogManager에서 하드코딩
                             );
-                            LogEmitter.emit(ev, lineLog);
+                            LogEmitter.emit(ev, lineLog);                              // 이상행위 카운팅
+
+                            // ★ 서버 실시간 검증 전송
+                            AlertSender.sendForensicEvent(PayloadFactory.forEvent(def.type(), procName));
 
                             lastDetectedMap.put(procName, now);
                         }
