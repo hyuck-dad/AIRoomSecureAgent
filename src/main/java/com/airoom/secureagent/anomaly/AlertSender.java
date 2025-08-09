@@ -2,6 +2,13 @@ package com.airoom.secureagent.anomaly;
 
 import com.airoom.secureagent.log.HttpLogger;
 import com.airoom.secureagent.log.LogManager;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.airoom.secureagent.payload.ForensicPayload;
+import com.airoom.secureagent.payload.PayloadManager;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 이상행위 알림 전송기
@@ -61,6 +68,8 @@ import com.airoom.secureagent.log.LogManager;
  */
 public class AlertSender {
 
+    private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+
     /** 횟수형 임계치 초과 알림 */
     public static void sendCountAlert(String userId, EventType type, int count, int windowSec, String sample) {
         String line = "[ALERT] " +
@@ -85,8 +94,21 @@ public class AlertSender {
         LogManager.writeLog(line);
         HttpLogger.sendLog(line);
     }
+    /** 포렌식 이벤트 전송 (DB 저장 없이 서버에서 실시간 검증만) */
+    public static void sendForensicEvent(ForensicPayload p) {
+        String encPayloadB64 = PayloadManager.encryptPayload(p);       // AES-Base64
+        String token = PayloadManager.makeVisibleToken(p, 12);         // HMAC-hex 12
 
-    private static String safe(String s) {
-        return (s == null) ? "-" : s;
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("token", token);
+        body.put("encPayload", encPayloadB64);
+        body.put("agentTs", p.ts());
+        body.put("agentVer", p.app());
+
+        String json = GSON.toJson(body);
+        // /event 엔드포인트로 JSON 전송 (본문은 CryptoUtil로 추가 암호화)
+        HttpLogger.sendJson("/event", json, true);
     }
+
+    private static String safe(String s) { return (s == null) ? "-" : s; }
 }
