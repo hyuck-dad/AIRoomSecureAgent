@@ -176,6 +176,14 @@ public class StatusServer {
         }
     }
 
+    /*
+    어떻게 추적하나? (토큰을 DB에 안 저장할 때)
+    스크린샷/촬영물에서 토큰과 대략 시각만 확보돼도,
+    서버의 이벤트 로그(저장된 encPayload 복호화 로그 or 서버 stdout/수집된 파일 등)에서 그 시간대의 이벤트들을 모으고
+    각각의 페이로드로 canonical → HMAC 토큰을 재계산하면
+    토큰 매칭되는 이벤트를 찾을 수 있어.
+    즉, 토큰 컬럼 인덱스 없이도 시간 범위를 좁혀 재계산으로 역추적이 가능해(좀 수고스럽지만 가능).
+    */
     /** /event: token+encPayload 수신 → 복호화 → HMAC 재계산 검증 */
     static class EventHandler implements HttpHandler {
         private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
