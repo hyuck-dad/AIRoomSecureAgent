@@ -11,6 +11,14 @@ public class DeviceIdGenerator {
     // 환경변수 AIDT_DEVICE_SALT 가 있으면 우선, 없으면 기본값
     private static final String DEFAULT_SALT = "AIDT_SECURE_AGENT_SALT_DEV";
 
+    /*
+    Composite Device ID는 SHA-256(+salt)로 만든 해시값이야.
+    복호화 불가(원본 복원 X). 같은 입력 → 같은 출력이 나오는 “결정적 식별자” 용도.
+    서버가 원본(MachineGuid 등)을 알아야 한다면 방법은 두 가지:
+    등록(enrollment) 단계에서 원본 신호들을 AES로 암호화해서 서버에 보관(키 관리는 서버). 인덱싱/조인은 해시 토큰으로 하고, 원본 열람이 필요할 때만 복호화.
+    이벤트가 올 때 **암호화된 payload(원본 포함)**를 함께 전송 → 서버가 복호화 후 동일 규칙으로 해시 재계산해서 일치 여부로 검증.
+    요약: Device ID 자체로는 역산 불가. 원본 조회가 필요하면 별도로 암호화 보관하거나 매 이벤트에 암호화된 원본을 함께 보내기.
+    */
     public static String compute(DeviceFingerprint fp) {
         String salt = System.getenv().getOrDefault("AIDT_DEVICE_SALT", DEFAULT_SALT);
 
