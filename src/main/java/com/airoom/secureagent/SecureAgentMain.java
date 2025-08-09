@@ -1,4 +1,20 @@
 package com.airoom.secureagent;
+// 상단 import에 추가
+import com.airoom.secureagent.payload.PayloadFactory;
+import com.airoom.secureagent.payload.PayloadManager;
+import com.airoom.secureagent.payload.ForensicPayload;
+import com.airoom.secureagent.anomaly.AlertSender;
+import com.airoom.secureagent.steganography.ImageStegoWithWatermarkEncoder;
+import com.airoom.secureagent.steganography.PdfStegoWithWatermarkEncoder;
+
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 
 import com.airoom.secureagent.anomaly.EventType;
 import com.airoom.secureagent.anomaly.LogEmitter;
@@ -17,6 +33,7 @@ import com.airoom.secureagent.log.HttpLogger;
 import com.airoom.secureagent.network.RetryWorker;
 
 import java.nio.file.FileSystems;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -29,6 +46,9 @@ public class SecureAgentMain {
     public static final boolean TEST_MODE = true;   // true=테스트용 좁은 경로 감시
     /** 선택적 스모크 테스트. 실행 시 -Daidt.smoke=true 로 주면 자동 가짜 이벤트 주입 */
     private static final boolean SMOKE_TEST = true;
+    // 클래스 상단 플래그 근처에 추가
+    private static final boolean FORENSIC_SMOKE = true;  // 포렌식 체인(토큰/HMAC, /event 검증) 빠른 점검
+
 
     public static void main(String[] args) {
         try {
@@ -98,6 +118,13 @@ public class SecureAgentMain {
                 }).submit(SecureAgentMain::runSmokeTest);
             }
 
+            if (FORENSIC_SMOKE) {
+                Executors.newSingleThreadScheduledExecutor(r -> {
+                    Thread t = new Thread(r, "forensic-smoke");
+                    t.setDaemon(true);
+                    return t;
+                }).schedule(SecureAgentMain::runForensicSmokeTest, 2, TimeUnit.SECONDS);
+            }
             /* 메인 스레드는 대기만 */
             System.out.println("[SecureAgent] 초기화 완료. 감시 중… (SMOKE=" + SMOKE_TEST + ")");
         } catch (Exception e) {
@@ -240,7 +267,86 @@ public class SecureAgentMain {
         }
     }
 
+    /* =========================
+     * 포렌식 스모크: token/HMAC ↔ /event 검증 + 스테가 삽입/복호화
+     * ========================= */
+    private static void runForensicSmokeTest() {
+        try {
+            Path base = Paths.get(System.getProperty("user.home"), "SecureAgent", "test-files");
+            Files.createDirectories(base);
 
+            // --- (A) CAPTURE 이벤트 1건: 서버 /event 실시간 검증만 ---
+            ForensicPayload pCap = PayloadFactory.forEvent(EventType.CAPTURE, "-");
+            AlertSender.sendForensicEvent(pCap);
+            System.out.println("[FORENSIC] CAPTURE sent. token=" +
+                    PayloadManager.makeVisibleToken(pCap, 12));
+
+            // --- (B) 이미지: 샘플 생성 → 스테가 삽입 → /event → 디코딩 확인 ---
+            Path imgIn  = base.resolve("in.png");
+            Path imgOut = base.resolve("out.png");
+            makeSamplePng(imgIn);
+
+            ForensicPayload pImg = PayloadFactory.forEvent(EventType.STEGO_IMAGE, imgOut.toString());
+            String encB64Img = PayloadManager.encryptPayload(pImg);
+            String tokenImg  = PayloadManager.makeVisibleToken(pImg, 12);
+            String wmImg     = "AIDT " + tokenImg + " " + pImg.ts();
+
+            ImageStegoWithWatermarkEncoder.encodeEncrypted(
+                    imgIn.toString(), imgOut.toString(), encB64Img, wmImg, 0.12f);
+            AlertSender.sendForensicEvent(pImg);
+
+            String decodedImg = ImageStegoDecoder.decode(imgOut.toString());
+            System.out.println("[FORENSIC] Image decoded payload: " + decodedImg);
+
+            // --- (C) PDF: 샘플 생성 → 스테가 삽입 → /event → 디코딩 확인 ---
+            Path pdfIn  = base.resolve("in.pdf");
+            Path pdfOut = base.resolve("out.pdf");
+            makeSamplePdf(pdfIn);
+
+            ForensicPayload pPdf = PayloadFactory.forEvent(EventType.STEGO_PDF, pdfOut.toString());
+            String encB64Pdf = PayloadManager.encryptPayload(pPdf);
+            String tokenPdf  = PayloadManager.makeVisibleToken(pPdf, 12);
+            String wmPdf     = "AIDT " + tokenPdf + " " + pPdf.ts();
+
+            PdfStegoWithWatermarkEncoder.embedEncrypted(
+                    pdfIn.toString(), pdfOut.toString(), encB64Pdf, wmPdf, 0.12f);
+            AlertSender.sendForensicEvent(pPdf);
+
+            String decodedPdf = PdfStegoDecoder.extract(pdfOut.toString());
+            System.out.println("[FORENSIC] PDF decoded payload: " + decodedPdf);
+
+            System.out.println("[FORENSIC] 완료. 상태 서버 콘솔에 [/event] verify=true 라인이 찍혀야 정상입니다.");
+
+        } catch (Exception e) {
+            System.err.println("[FORENSIC] 오류: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private static void makeSamplePng(Path file) throws Exception {
+        BufferedImage bi = new BufferedImage(640, 360, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = bi.createGraphics();
+        g.setColor(Color.WHITE); g.fillRect(0,0,640,360);
+        g.setColor(Color.BLACK); g.setFont(new Font("SansSerif", Font.PLAIN, 22));
+        g.drawString("Sample PNG " + System.currentTimeMillis(), 20, 180);
+        g.dispose();
+        ImageIO.write(bi, "png", file.toFile());
+    }
+
+    private static void makeSamplePdf(Path file) throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage();
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.beginText();
+                cs.setFont(PDType1Font.HELVETICA, 12);
+                cs.newLineAtOffset(72, 720);
+                cs.showText("Sample PDF " + System.currentTimeMillis());
+                cs.endText();
+            }
+            doc.save(file.toFile());
+        }
+    }
 
 
     /** 공용 이벤트 발행 헬퍼 */
@@ -254,4 +360,6 @@ public class SecureAgentMain {
         try { return LogManager.getUserId(); }
         catch (Throwable t) { return "user-unknown"; }
     }
+
+
 }
