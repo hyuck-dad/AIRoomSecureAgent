@@ -10,6 +10,10 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.airoom.secureagent.anomaly.EventType;
 import com.airoom.secureagent.anomaly.LogEmitter;
 import com.airoom.secureagent.anomaly.LogEvent;
+import com.airoom.secureagent.payload.PayloadFactory;
+import com.airoom.secureagent.payload.PayloadManager;
+import com.airoom.secureagent.payload.ForensicPayload;
+import com.airoom.secureagent.anomaly.AlertSender;
 
 import java.nio.channels.*;
 import java.nio.file.*;
@@ -59,18 +63,42 @@ public class StegoDispatcher {
         }
 
         /* ========== 3. 실제 삽입 ========== */
-        String payload = file.getFileName() + "|" + Instant.now().toEpochMilli();
-        String wmText  = "AIDT";
+//        String payload = file.getFileName() + "|" + Instant.now().toEpochMilli();
+//        String wmText  = "AIDT";
         boolean ok = false;
         boolean isImage = isImage(file);
         boolean isPdf   = isPdf(file);
+//        try {
+//            if (isImage) {
+//                ok = ImageStegoWithWatermarkEncoder.encode(
+//                        abs, abs, payload, wmText, WATERMARK_OPACITY);
+//            } else if (isPdf) {
+//                ok = PdfStegoWithWatermarkEncoder.embed(
+//                        abs, abs, payload, wmText, WATERMARK_OPACITY);
+//            }
         try {
             if (isImage) {
-                ok = ImageStegoWithWatermarkEncoder.encode(
-                        abs, abs, payload, wmText, WATERMARK_OPACITY);
+                // ★ 이미지 이벤트용 포렌식 페이로드 생성
+                ForensicPayload p = PayloadFactory.forEvent(EventType.STEGO_IMAGE, abs);
+                String encB64 = PayloadManager.encryptPayload(p);                 // AES-Base64
+                String token  = PayloadManager.makeVisibleToken(p, 12);           // HMAC 12자
+                String wmText = "AIDT " + token + " " + p.ts();                   // 화면/파일 표시용
+
+                ok = ImageStegoWithWatermarkEncoder.encodeEncrypted(
+                        abs, abs, encB64, wmText, WATERMARK_OPACITY);
+
+                if (ok) AlertSender.sendForensicEvent(p);                         // ★ 서버 실시간 검증 전송
             } else if (isPdf) {
-                ok = PdfStegoWithWatermarkEncoder.embed(
-                        abs, abs, payload, wmText, WATERMARK_OPACITY);
+                // ★ PDF 이벤트용 포렌식 페이로드 생성
+                ForensicPayload p = PayloadFactory.forEvent(EventType.STEGO_PDF, abs);
+                String encB64 = PayloadManager.encryptPayload(p);
+                String token  = PayloadManager.makeVisibleToken(p, 12);
+                String wmText = "AIDT " + token + " " + p.ts();
+
+                ok = PdfStegoWithWatermarkEncoder.embedEncrypted(
+                        abs, abs, encB64, wmText, WATERMARK_OPACITY);
+
+                if (ok) AlertSender.sendForensicEvent(p);                         // ★ 서버 실시간 검증 전송
             }
         } catch (Exception ex) {
             LogManager.writeLog("[Stego] 예외 → " + file + " : " + ex);
@@ -93,8 +121,8 @@ public class StegoDispatcher {
             String log = "[Stego] 삽입 완료 → " + file;
 
             EventType type = isImage ? EventType.STEGO_IMAGE :
-                    isPdf   ? EventType.STEGO_PDF   :
-                            null; // 확장자 외: 발행하지 않음
+                             isPdf   ? EventType.STEGO_PDF   :
+                             null; // 확장자 외: 발행하지 않음
 
             if (type != null) {
                 LogEvent ev = LogEvent.of(
