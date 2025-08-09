@@ -7,6 +7,8 @@ import com.airoom.secureagent.log.HttpLogger;
 import com.airoom.secureagent.log.LogManager;
 import com.sun.jna.Library;
 import com.sun.jna.Native;
+import com.airoom.secureagent.payload.PayloadFactory;
+import com.airoom.secureagent.anomaly.AlertSender;
 
 public class CaptureDetector {
 
@@ -46,6 +48,8 @@ public class CaptureDetector {
                                 LogManager.getUserId()
                         );
                         LogEmitter.emit(ev, msg);
+                        // ★ 서버 실시간 검증 전송 (contentId는 "-" 혹은 포커스 윈도우 타이틀로 교체 가능)
+                        AlertSender.sendForensicEvent(PayloadFactory.forEvent(EventType.CAPTURE, "-"));
 
                         Thread.sleep(1000);
                     }

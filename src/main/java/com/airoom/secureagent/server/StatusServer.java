@@ -3,6 +3,8 @@ package com.airoom.secureagent.server;
 import com.airoom.secureagent.util.CryptoUtil;
 import com.sun.net.httpserver.*;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.*;
@@ -10,6 +12,9 @@ import java.nio.charset.StandardCharsets;
 
 import java.util.concurrent.ThreadLocalRandom;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 
 public class StatusServer {
 
@@ -55,6 +60,7 @@ public class StatusServer {
         server.createContext("/log", new LogHandler());
         server.createContext("/flush", new FlushHandler()); // ← 추가
         server.createContext("/net/fail", new NetFailHandler());
+        server.createContext("/event", new EventHandler());
 
         server.setExecutor(null);
         server.start();
@@ -170,4 +176,114 @@ public class StatusServer {
         }
     }
 
+    /*
+    어떻게 추적하나? (토큰을 DB에 안 저장할 때)
+    스크린샷/촬영물에서 토큰과 대략 시각만 확보돼도,
+    서버의 이벤트 로그(저장된 encPayload 복호화 로그 or 서버 stdout/수집된 파일 등)에서 그 시간대의 이벤트들을 모으고
+    각각의 페이로드로 canonical → HMAC 토큰을 재계산하면
+    토큰 매칭되는 이벤트를 찾을 수 있어.
+    즉, 토큰 컬럼 인덱스 없이도 시간 범위를 좁혀 재계산으로 역추적이 가능해(좀 수고스럽지만 가능).
+    */
+    /** /event: token+encPayload 수신 → 복호화 → HMAC 재계산 검증 */
+    static class EventHandler implements HttpHandler {
+        private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+
+        @Override
+        public void handle(HttpExchange exchange) {
+            try {
+                if (!"POST".equals(exchange.getRequestMethod())) {
+                    exchange.sendResponseHeaders(405, 0);
+                    exchange.getResponseBody().close();
+                    return;
+                }
+
+                // 1) 본문 읽기
+                InputStream is = exchange.getRequestBody();
+                String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+
+                // 2) 전송이 암호화됐으면 복호화, 아니라면 그대로 JSON
+                String json;
+                try {
+                    json = CryptoUtil.decrypt(body);
+                } catch (Exception ignore) {
+                    json = body;
+                }
+
+                JsonObject req = GSON.fromJson(json, JsonObject.class);
+                String token = opt(req, "token");
+                String encPayload = opt(req, "encPayload");
+
+                if (token == null || encPayload == null) {
+                    String msg = "[/event] invalid body";
+                    System.out.println(msg);
+                    exchange.sendResponseHeaders(400, 0);
+                    exchange.getResponseBody().close();
+                    return;
+                }
+
+                // 3) encPayload 복호화 → ForensicPayload JSON
+                String payloadJson;
+                try {
+                    payloadJson = CryptoUtil.decrypt(encPayload);
+                } catch (Exception e) {
+                    System.out.println("[/event] encPayload decrypt fail: " + e.getMessage());
+                    exchange.sendResponseHeaders(400, 0);
+                    exchange.getResponseBody().close();
+                    return;
+                }
+
+                JsonObject p = GSON.fromJson(payloadJson, JsonObject.class);
+
+                // 4) canonical 구성(에이전트와 동일 규칙)
+                String canonical = canonicalString(p);
+
+                // 5) 서버 비밀키로 HMAC 재계산 → 앞 12자 비교
+                String expected = hmacHex(canonical, 12);
+
+                boolean ok = token.equalsIgnoreCase(expected);
+                System.out.println("[/event] verify=" + ok +
+                        " token=" + token +
+                        " expected=" + expected +
+                        " uid=" + opt(p, "uid") +
+                        " deviceId=" + opt(p, "deviceId") +
+                        " action=" + opt(p, "action") +
+                        " ts=" + opt(p, "ts"));
+
+                // DB 저장 없이 200/400만 응답
+                if (ok) {
+                    exchange.sendResponseHeaders(200, 0);
+                } else {
+                    exchange.sendResponseHeaders(400, 0);
+                }
+                exchange.getResponseBody().close();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                try { exchange.sendResponseHeaders(500, 0); exchange.getResponseBody().close(); } catch (Exception ignore) {}
+            }
+        }
+
+        private static String canonicalString(JsonObject p) {
+            // ver|app|uid|deviceId|contentId|action|ts  (PayloadManager와 동일)
+            return get(p,"ver") + "|" + get(p,"app") + "|" + get(p,"uid") + "|" + get(p,"deviceId") + "|" +
+                    get(p,"contentId") + "|" + get(p,"action") + "|" + get(p,"ts");
+        }
+
+        private static String get(JsonObject o, String k) {
+            var e = o.get(k);
+            return e == null || e.isJsonNull() ? "-" : e.getAsString();
+        }
+        private static String opt(JsonObject o, String k) { return get(o, k); }
+
+        private static String hmacHex(String canonical, int hexLen) throws Exception {
+            String secret = System.getenv().getOrDefault("AIDT_TOKEN_SECRET", "DEV_TOKEN_SECRET");
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] d = mac.doFinal(canonical.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(d.length * 2);
+            for (byte b : d) sb.append(String.format("%02x", b));
+            int n = Math.max(4, Math.min(hexLen, sb.length()));
+            return sb.substring(0, n);
+        }
+    }
 }
