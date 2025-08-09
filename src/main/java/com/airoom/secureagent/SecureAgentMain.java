@@ -5,6 +5,8 @@ import com.airoom.secureagent.anomaly.LogEmitter;
 import com.airoom.secureagent.anomaly.LogEvent;
 import com.airoom.secureagent.capture.CaptureDetector;
 import com.airoom.secureagent.capture.ProcessMonitor;
+import com.airoom.secureagent.device.DeviceFingerprint;
+import com.airoom.secureagent.device.DeviceFingerprintCollector;
 import com.airoom.secureagent.monitor.GlobalWatcher;
 import com.airoom.secureagent.server.StatusServer;
 import com.airoom.secureagent.steganography.ImageStegoDecoder;
@@ -31,6 +33,11 @@ public class SecureAgentMain {
     public static void main(String[] args) {
         try {
             System.out.println("[SecureAgent] 보안 에이전트가 시작되었습니다. TEST_MODE=" + TEST_MODE);
+
+            /* 0) 단말 식별자 수집 & 콘솔 출력 (단말 식별자 검증) */
+            DeviceFingerprint fp = DeviceFingerprintCollector.collect();
+            DeviceFingerprintCollector.print(fp);
+
 
             /* 1) 로컬 상태 서버 시작 (로그 수신 엔드포인트 포함) */
             StatusServer.startServer();
