@@ -112,7 +112,53 @@ public class HttpLogger {
         return false;
     }
 
+    /** JSON 전송: encrypt=true면 CryptoUtil.encrypt(json)을 text/plain으로 보냄 */
+    public static boolean sendJson(String endpointPath, String json, boolean encrypt) {
+        // 테스트용 강제 실패
+        if (shouldForceFail()) {
+            System.out.println("[HttpLogger] TEST force-fail(JSON)");
+            return false;
+        }
 
+        String endpoint = null;
+        try {
+            endpoint = getBaseUrl() + ensureLeadingSlash(endpointPath);
+            URL url = new URL(endpoint);
+
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(getConnectTimeout());
+            conn.setReadTimeout(getReadTimeout());
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+
+            String bodyToSend;
+            if (encrypt) {
+                bodyToSend = CryptoUtil.encrypt(json);
+                conn.setRequestProperty("Content-Type", "text/plain; charset=UTF-8");
+            } else {
+                bodyToSend = json;
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            }
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(bodyToSend.getBytes(StandardCharsets.UTF_8));
+                os.flush();
+            }
+
+            int code = conn.getResponseCode();
+            if (code == HttpURLConnection.HTTP_OK) {
+                System.out.println("[클라이언트] JSON 전송 성공 → " + endpoint);
+                return true;
+            } else {
+                System.out.println("[클라이언트] JSON 전송 실패 (" + code + ") → " + endpoint);
+            }
+        } catch (Exception e) {
+            System.out.println("[클라이언트] JSON 전송 예외 → " + (endpoint == null ? "-" : endpoint) +
+                    " / reason=" + e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+        // ※ 이벤트는 지금 스풀링하지 않음(정책상 실시간 검증 목적)
+        return false;
+    }
 
 
 }
