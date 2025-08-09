@@ -2,6 +2,8 @@ package com.airoom.secureagent.anomaly;
 
 import com.airoom.secureagent.log.HttpLogger;
 import com.airoom.secureagent.log.LogManager;
+import com.airoom.secureagent.payload.ForensicPayload;
+
 
 public class LogEmitter {
 
@@ -17,4 +19,12 @@ public class LogEmitter {
         // 2) 실시간 이상행위 분석용 이벤트 스트림
         AnomalyDetector.consume(ev);  // 다음 단계에서 구현 (현재는 빈 메서드로 만들어도 OK)
     }
+
+    /** 사람이 읽는 로그도 남기고, 서버 실시간 검증도 동시에 수행 */
+    public static void emitForensic(ForensicPayload p, String humanLine) {
+        LogManager.writeLog(humanLine);
+        HttpLogger.sendLog(humanLine);
+        AlertSender.sendForensicEvent(p);
+    }
 }
+
