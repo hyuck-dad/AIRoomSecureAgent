@@ -122,6 +122,10 @@
                             <javaOption>-Xms128m</javaOption>
                             <javaOption>-Xmx512m</javaOption>
                             <javaOption>-Daidt.spool.encrypt=true</javaOption>
+                            <javaOption>-Dsecureagent.test=true</javaOption>
+                            <javaOption>-Dsecureagent.smoke=true</javaOption>
+                            <javaOption>-Dsecureagent.forensic=true</javaOption>
+                            <javaOption>-Dsecureagent.devlog=true</javaOption>
                         </javaOptions>
                     </configuration>
                 </execution>
