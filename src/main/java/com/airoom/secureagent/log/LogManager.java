@@ -46,7 +46,7 @@ public class LogManager {
         }
         Path dir = Paths.get(base, "SecureAgent", "log");
         try { Files.createDirectories(dir); } catch (Exception ignore) {}
-        return dir.resolve("capture-log.txt");
+        return dir.resolve("SecureAgent_log.txt");
     }
     public static void writeLog(String message) {
         if (!DEV_LOG) return; // 운영에서는 파일 로그 끔

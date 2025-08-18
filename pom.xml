@@ -115,7 +115,7 @@
                         <winMenu>false</winMenu>                 <!-- 시작 메뉴 등록 -->
                         <winConsole>true</winConsole>   <!-- 개발 확인용: 콘솔창 표시 -->
                         <winPerUserInstall>true</winPerUserInstall> <!-- 관리자 권한 없이 사용자 단위 설치 -->
-                        <icon>${project.basedir}/src/main/resources/app/icon.ico</icon>
+                        <icon>${project.basedir}/src/main/resources/app/yellowicon.ico</icon>
 
                         <!-- JVM 옵션/시스템 프로퍼티 -->
                         <javaOptions>
