@@ -11,6 +11,7 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 
+import com.airoom.secureagent.util.SingleInstance;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -43,14 +44,25 @@ import java.util.concurrent.*;
 public class SecureAgentMain {
 
     /** 테스트/데모 플래그 */
-    public static final boolean TEST_MODE = true;   // true=테스트용 좁은 경로 감시
+    public static final boolean TEST_MODE = Boolean.getBoolean("secureagent.test");   // true=테스트용 좁은 경로 감시
     /** 선택적 스모크 테스트. 실행 시 -Daidt.smoke=true 로 주면 자동 가짜 이벤트 주입 */
-    private static final boolean SMOKE_TEST = true;
+    private static final boolean SMOKE_TEST = Boolean.getBoolean("secureagent.smoke");
     // 클래스 상단 플래그 근처에 추가
-    private static final boolean FORENSIC_SMOKE = true;  // 포렌식 체인(토큰/HMAC, /event 검증) 빠른 점검
+    private static final boolean FORENSIC_SMOKE = Boolean.getBoolean("secureagent.forensic");  // 포렌식 체인(토큰/HMAC, /event 검증) 빠른 점검
 
 
     public static void main(String[] args) {
+        // 0-a) 단일 실행 보장 (per-user 설치 구조와 맞춰 LOCALAPPDATA 쪽에 락 파일)
+        Path lockFile;
+        try {
+            String la = System.getenv("LOCALAPPDATA");
+            if (la == null || la.isBlank()) la = Paths.get(System.getProperty("user.home"), "AppData","Local").toString();
+            lockFile = Paths.get(la, "SecureAgent", "run.lock");
+        } catch (Throwable t) {
+            lockFile = Paths.get(System.getProperty("user.home"), "AppData","Local","SecureAgent","run.lock");
+        }
+        SingleInstance.acquireOrExit(lockFile);
+
         try {
             System.out.println("[SecureAgent] 보안 에이전트가 시작되었습니다. TEST_MODE=" + TEST_MODE);
 
