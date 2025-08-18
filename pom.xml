@@ -54,83 +54,109 @@
         </dependency>
     </dependencies>
 
-<build>
-    <plugins>
-        <!--
-            모든 의존성 포함한 단일 JAR
-            shaded 단일 JAR 생성
-        -->
-        <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-shade-plugin</artifactId>
-            <version>3.5.0</version>
-            <executions>
-                <execution>
-                    <phase>package</phase>
-                    <goals><goal>shade</goal></goals>
-                    <configuration>
-                        <createDependencyReducedPom>false</createDependencyReducedPom>
-                        <!-- 핵심: -shaded.jar를 “추가”로 붙이기 -->
-                        <shadedArtifactAttached>true</shadedArtifactAttached>
-                        <shadedClassifierName>shaded</shadedClassifierName>
-                        <transformers>
-                            <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                <mainClass>com.airoom.secureagent.SecureAgentMain</mainClass>
-                            </transformer>
-                        </transformers>
-                    </configuration>
-                </execution>
-            </executions>
-        </plugin>
-        <!--
-            Windows EXE 생성
-            jpackage: exe 설치파일 만들기
-        -->
-        <plugin>
-            <groupId>org.panteleyev</groupId>
-            <artifactId>jpackage-maven-plugin</artifactId>
-            <version>1.6.6</version>
-            <executions>
-                <execution>
-                    <id>make-exe</id>
-                    <phase>package</phase>
-                    <goals><goal>jpackage</goal></goals>
-                    <configuration>
-                        <!-- 산출물 입력/출력 -->
-                        <input>${project.build.directory}</input>
-                        <destination>${project.build.directory}/dist</destination>
+    <build>
+        <plugins>
+            <!--
+                모든 의존성 포함한 단일 JAR
+                shaded 단일 JAR 생성
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>shade</goal></goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <!-- 핵심: -shaded.jar를 “추가”로 붙이기 -->
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>shaded</shadedClassifierName>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.airoom.secureagent.SecureAgentMain</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
 
-                        <!-- shaded JAR 파일명, 위에서 classifier=shaded 로 만들었으니 이 이름이 맞다 -->
-                        <mainJar>${project.artifactId}-${project.version}-shaded.jar</mainJar>
-                        <mainClass>com.airoom.secureagent.SecureAgentMain</mainClass>
+            <!-- shaded JAR만 jpackage 입력 폴더로 스테이징(용량 다이어트 핵심) -->
+            <plugin>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
+                <executions>
+                    <execution>
+                        <id>stage-jpackage-input</id>
+                        <phase>package</phase>
+                        <goals><goal>copy-resources</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/jpkg</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.build.directory}</directory>
+                                    <includes>
+                                        <include>${project.artifactId}-${project.version}-shaded.jar</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
 
-                        <!-- 앱 메타 -->
-                        <name>SecureAgent</name>
-                        <vendor>AIROOM</vendor>
-                        <appVersion>0.9.0</appVersion>
-                        <type>EXE</type>
+            <!--
+                Windows EXE 생성
+                jpackage: exe 설치파일 만들기
+            -->
+            <plugin>
+                <groupId>org.panteleyev</groupId>
+                <artifactId>jpackage-maven-plugin</artifactId>
+                <version>1.6.6</version>
+                <executions>
+                    <execution>
+                        <id>make-exe</id>
+                        <phase>package</phase>
+                        <goals><goal>jpackage</goal></goals>
+                        <configuration>
+                            <!-- 산출물 입력/출력 -->
+                            <!-- target 전체 대신 jpkg(= shaded JAR만) 사용 -->
+                            <input>${project.build.directory}/jpkg</input>
+                            <destination>${project.build.directory}/dist</destination>
 
-                        <!-- Windows 옵션 -->
-                        <winShortcut>true</winShortcut>         <!-- 바탕화면 바로가기 생성 -->
-                        <winMenu>false</winMenu>                 <!-- 시작 메뉴 등록 -->
-                        <winConsole>true</winConsole>   <!-- 개발 확인용: 콘솔창 표시 -->
-                        <winPerUserInstall>true</winPerUserInstall> <!-- 관리자 권한 없이 사용자 단위 설치 -->
-                        <icon>${project.basedir}/src/main/resources/app/yellowicon.ico</icon>
+                            <!-- shaded JAR 파일명, 위에서 classifier=shaded 로 만들었으니 이 이름이 맞다 -->
+                            <mainJar>${project.artifactId}-${project.version}-shaded.jar</mainJar>
+                            <mainClass>com.airoom.secureagent.SecureAgentMain</mainClass>
 
-                        <!-- JVM 옵션/시스템 프로퍼티 -->
-                        <javaOptions>
-                            <javaOption>-Xms128m</javaOption>
-                            <javaOption>-Xmx512m</javaOption>
-                            <javaOption>-Daidt.spool.encrypt=true</javaOption>
-                            <javaOption>-Dsecureagent.test=true</javaOption>
-                            <javaOption>-Dsecureagent.smoke=true</javaOption>
-                            <javaOption>-Dsecureagent.forensic=true</javaOption>
-                            <javaOption>-Dsecureagent.devlog=true</javaOption>
-                        </javaOptions>
-                    </configuration>
-                </execution>
-            </executions>
-        </plugin>
-    </plugins>
+                            <!-- 앱 메타 -->
+                            <name>SecureAgent</name>
+                            <vendor>AIROOM</vendor>
+                            <appVersion>0.9.0</appVersion>
+                            <type>EXE</type>
+
+                            <!-- Windows 옵션 -->
+                            <winShortcut>true</winShortcut>         <!-- 바탕화면 바로가기 생성 -->
+                            <winMenu>false</winMenu>                 <!-- 시작 메뉴 등록 -->
+                            <winConsole>true</winConsole>            <!-- 개발 확인용: 콘솔창 표시 -->
+                            <winPerUserInstall>true</winPerUserInstall> <!-- 관리자 권한 없이 사용자 단위 설치 -->
+                            <icon>${project.basedir}/src/main/resources/app/yellowicon.ico</icon>
+
+                            <!-- JVM 옵션/시스템 프로퍼티 -->
+                            <javaOptions>
+                                <javaOption>-Xms128m</javaOption>
+                                <javaOption>-Xmx512m</javaOption>
+                                <javaOption>-Daidt.spool.encrypt=true</javaOption>
+                                <javaOption>-Dsecureagent.test=true</javaOption>
+                                <javaOption>-Dsecureagent.smoke=true</javaOption>
+                                <javaOption>-Dsecureagent.forensic=true</javaOption>
+                                <javaOption>-Dsecureagent.devlog=true</javaOption>
+                            </javaOptions>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>
