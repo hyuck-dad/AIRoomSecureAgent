@@ -9,7 +9,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
-
+import java.time.Instant;
+import oshi.SystemInfo;
 import java.util.concurrent.ThreadLocalRandom;
 
 import com.google.gson.Gson;
@@ -43,6 +44,38 @@ public class StatusServer {
         return true;
     }
 
+    private static volatile String agentVersion = "1.0.0-dev";
+    private static volatile String agentSha256  = "DEV-SHA256-PLACEHOLDER";
+    private static volatile String startedAt    = null;
+    private static volatile boolean watermarkActive = false;
+    private static final SystemInfo SI = new SystemInfo();
+
+    // 설정 진입점
+    public static void configure(String version, String sha256){
+        if (version != null && !version.isBlank()) agentVersion = version;
+        if (sha256  != null && !sha256.isBlank())  agentSha256  = sha256;
+    }
+
+    // 공통 응답 유틸
+    private static void addCORS(HttpExchange ex){
+        Headers h = ex.getResponseHeaders();
+        h.add("Access-Control-Allow-Origin","*");
+        h.add("Access-Control-Allow-Headers","*");
+        h.add("Access-Control-Allow-Methods","GET,POST,OPTIONS");
+    }
+    private static void sendJson(HttpExchange ex, int code, String json) throws Exception {
+        addCORS(ex);
+        if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+            ex.sendResponseHeaders(204, -1);
+            ex.close(); return;
+        }
+        byte[] b = json.getBytes(StandardCharsets.UTF_8);
+        ex.getResponseHeaders().set("Content-Type","application/json; charset=utf-8");
+        ex.sendResponseHeaders(code, b.length);
+        try (OutputStream os = ex.getResponseBody()) { os.write(b); }
+        ex.close();
+    }
+
     public static void startServer() throws Exception {
         int port = 4455;
         HttpServer server = null;
@@ -56,11 +89,17 @@ public class StatusServer {
         }
         if (server == null) throw new RuntimeException("[SecureAgent] 사용 가능한 포트를 찾을 수 없습니다.");
 
+        // 시작시각 기록
+        startedAt = Instant.now().toString();
+
         server.createContext("/status", new StatusHandler());
         server.createContext("/log", new LogHandler());
         server.createContext("/flush", new FlushHandler()); // ← 추가
         server.createContext("/net/fail", new NetFailHandler());
         server.createContext("/event", new EventHandler());
+        server.createContext("/activate-watermark", new ActivateHandler());
+        server.createContext("/download-tag", new DownloadTagHandler());
+        server.createContext("/metrics", new MetricsHandler());
 
         server.setExecutor(null);
         server.start();
@@ -71,14 +110,14 @@ public class StatusServer {
     static class StatusHandler implements HttpHandler {
         public void handle(HttpExchange exchange) {
             try {
-                String response = "OK";
-                exchange.sendResponseHeaders(200, response.length());
-                OutputStream os = exchange.getResponseBody();
-                os.write(response.getBytes());
-                os.close();
+                String json = String.format(
+                        "{\"version\":\"%s\",\"sha256\":\"%s\",\"startedAt\":\"%s\",\"heartbeatId\":\"%d\",\"port\":%d}",
+                        agentVersion, agentSha256, startedAt, System.currentTimeMillis(), runningPort);
+                sendJson(exchange, 200, json);
             } catch (Exception e) { e.printStackTrace(); }
         }
     }
+
 
     static class LogHandler implements HttpHandler {
         public void handle(HttpExchange exchange) {
@@ -286,4 +325,55 @@ public class StatusServer {
             return sb.substring(0, n);
         }
     }
+
+
+    // 워터마크 on/off
+    static class ActivateHandler implements HttpHandler {
+        public void handle(HttpExchange ex) {
+            try {
+                if (!"POST".equalsIgnoreCase(ex.getRequestMethod()) && !"OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+                    addCORS(ex); ex.sendResponseHeaders(405, 0); ex.getResponseBody().close(); return;
+                }
+                String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                boolean active = body.contains("\"active\":true");
+                watermarkActive = active;
+                System.out.println("[StatusServer] watermarkActive=" + active + " body=" + body);
+                // TODO: 실제 워터마크 토글 호출 지점 연결(현재는 로깅만)
+                sendJson(ex, 200, "{\"ok\":true}");
+            } catch (Exception e) { e.printStackTrace(); }
+        }
+    }
+
+    // 다운로드 태깅(스테가 삽입 후 메타 수신)
+    static class DownloadTagHandler implements HttpHandler {
+        public void handle(HttpExchange ex) {
+            try {
+                if (!"POST".equalsIgnoreCase(ex.getRequestMethod()) && !"OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+                    addCORS(ex); ex.sendResponseHeaders(405, 0); ex.getResponseBody().close(); return;
+                }
+                String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                System.out.println("[download-tag] " + body);
+                // TODO: 필요한 경우 파일명 해시/사이즈 등 파싱해 별도 로컬 로그/큐에 저장
+                sendJson(ex, 200, "{\"ok\":true}");
+            } catch (Exception e) { e.printStackTrace(); }
+        }
+    }
+
+    // CPU/메모리 노출
+    static class MetricsHandler implements HttpHandler {
+        public void handle(HttpExchange ex) {
+            try {
+                double cpu = SI.getHardware().getProcessor().getSystemCpuLoadBetweenTicks() * 100.0;
+                long total = SI.getHardware().getMemory().getTotal();
+                long avail = SI.getHardware().getMemory().getAvailable();
+                long used  = total - avail;
+                String json = String.format(java.util.Locale.ROOT,
+                        "{\"cpu\":%.2f,\"memUsed\":%d,\"memTotal\":%d,\"ts\":%d}",
+                        cpu, used, total, System.currentTimeMillis());
+                sendJson(ex, 200, json);
+            } catch (Exception e) { e.printStackTrace(); }
+        }
+    }
+
+
 }
