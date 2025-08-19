@@ -69,14 +69,24 @@ public class StatusServer {
                 || m.contains("broken pipe")
                 || m.contains("insufficient bytes");
     }
-    private static void addCORS(HttpExchange ex){
+    private static void addCors(HttpExchange ex){
         Headers h = ex.getResponseHeaders();
-        h.add("Access-Control-Allow-Origin","*");
-        h.add("Access-Control-Allow-Headers","*");
-        h.add("Access-Control-Allow-Methods","GET,POST,OPTIONS");
+        h.set("Access-Control-Allow-Origin", "*");
+        h.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+        h.set("Access-Control-Allow-Headers", "Content-Type");
+        h.set("Access-Control-Max-Age", "1800");
+    }
+    private static boolean handleCorsPreflight(HttpExchange ex) throws IOException {
+        if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+            addCors(ex);
+            ex.sendResponseHeaders(204, -1); // No Content
+            ex.close();
+            return true;
+        }
+        return false;
     }
     private static void sendJson(HttpExchange ex, int code, String json) throws Exception {
-        addCORS(ex);
+        addCors(ex);
         if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
             ex.sendResponseHeaders(204, -1);
             ex.close(); return;
@@ -349,8 +359,9 @@ public class StatusServer {
     static class ActivateHandler implements HttpHandler {
         public void handle(HttpExchange ex) {
             try {
+                if (handleCorsPreflight(ex)) return;
                 if (!"POST".equalsIgnoreCase(ex.getRequestMethod()) && !"OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
-                    addCORS(ex); ex.sendResponseHeaders(405, 0); ex.getResponseBody().close(); return;
+                    addCors(ex); ex.sendResponseHeaders(405, 0); ex.getResponseBody().close(); return;
                 }
                 String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 boolean active = body.contains("\"active\":true");
@@ -366,8 +377,9 @@ public class StatusServer {
     static class DownloadTagHandler implements HttpHandler {
         public void handle(HttpExchange ex) {
             try {
+                if (handleCorsPreflight(ex)) return;
                 if (!"POST".equalsIgnoreCase(ex.getRequestMethod()) && !"OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
-                    addCORS(ex); ex.sendResponseHeaders(405, 0); ex.getResponseBody().close(); return;
+                    addCors(ex); ex.sendResponseHeaders(405, 0); ex.getResponseBody().close(); return;
                 }
                 String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 System.out.println("[download-tag] " + body);
@@ -411,8 +423,10 @@ public class StatusServer {
     static class BindSessionHandler implements HttpHandler {
         @Override public void handle(HttpExchange ex) {
             try {
+                if (handleCorsPreflight(ex)) return;
                 if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
-                    ex.sendResponseHeaders(405, 0); ex.getResponseBody().close(); return;
+                    sendJson(ex, 405, "{\"ok\":false}");             // CORS 헤더 달고 405
+                    return;
                 }
                 String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 JsonObject j = JsonParser.parseString(body).getAsJsonObject();
@@ -423,10 +437,10 @@ public class StatusServer {
                 LogManager.setUserId(memberId);      // 없으면 setter 추가
                 PayloadManager.bindUser(memberId, jwt); // 없으면 no-op로 만들어도 OK
 
-                sendJson(ex, 200, "{\"ok\":true}");
                 System.out.println("[StatusServer] bind-session: memberId=" + memberId);
+                sendJson(ex, 200, "{\"ok\":true}");
             } catch (Exception e) {
-                try { ex.sendResponseHeaders(500, 0); ex.getResponseBody().close(); } catch (Exception ignore) {}
+                try { sendJson(ex, 500, "{\"ok\":false}"); } catch (Exception ignore) {}
             }
         }
     }
