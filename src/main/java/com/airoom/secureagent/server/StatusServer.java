@@ -5,6 +5,7 @@ import com.sun.net.httpserver.*;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.*;
@@ -59,6 +60,12 @@ public class StatusServer {
     }
 
     // 공통 응답 유틸
+    private static boolean isClientAbort(IOException e){
+        String m = (e.getMessage() == null ? "" : e.getMessage()).toLowerCase();
+        return m.contains("connection reset")
+                || m.contains("broken pipe")
+                || m.contains("insufficient bytes");
+    }
     private static void addCORS(HttpExchange ex){
         Headers h = ex.getResponseHeaders();
         h.add("Access-Control-Allow-Origin","*");
@@ -73,9 +80,14 @@ public class StatusServer {
         }
         byte[] b = json.getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().set("Content-Type","application/json; charset=utf-8");
-        ex.sendResponseHeaders(code, b.length);
-        try (OutputStream os = ex.getResponseBody()) { os.write(b); }
-        ex.close();
+        try {
+            ex.sendResponseHeaders(code, b.length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(b); }
+        } catch (IOException ioe) {
+            if (!isClientAbort(ioe)) throw ioe; // 클라 중단만 조용히 무시
+        } finally {
+            try { ex.close(); } catch (Exception ignore) {}
+        }
     }
 
     public static void startServer() throws Exception {
