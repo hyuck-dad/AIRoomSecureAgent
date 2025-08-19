@@ -33,12 +33,14 @@ import com.airoom.secureagent.log.FileSpoolStore;
 import com.airoom.secureagent.log.HttpLogger;
 import com.airoom.secureagent.network.RetryWorker;
 
+import java.io.InputStream;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.*;
 
 public class SecureAgentMain {
@@ -72,6 +74,11 @@ public class SecureAgentMain {
 
 
             /* 1) 로컬 상태 서버 시작 (로그 수신 엔드포인트 포함) */
+            // agent.properties 읽어와 StatusServer에 전달
+            Properties p = new Properties();
+            try (InputStream is = SecureAgentMain.class.getClassLoader().getResourceAsStream("agent.properties")) { if (is != null) p.load(is); }
+            StatusServer.configure(p.getProperty("agent.version","1.0.0-dev"),
+                    p.getProperty("agent.sha256Override","DEV-SHA256-PLACEHOLDER"));
             StatusServer.startServer();
 
             /* 1.5) 오프라인 스풀 + 재전송 워커 초기화 */
