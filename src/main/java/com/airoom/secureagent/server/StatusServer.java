@@ -62,6 +62,27 @@ public class StatusServer {
         if (sha256  != null && !sha256.isBlank())  agentSha256  = sha256;
     }
 
+    private static volatile boolean feActive = false;    // FE 신호
+    private static volatile boolean agentActive = false; // Verifier 신호
+    public static void setAgentActive(boolean active){
+        agentActive = active;
+        boolean on = isWatermarkActive();
+        applyWatermark(on);
+    }
+
+    private static boolean isWatermarkActive(){
+        return feActive || agentActive;
+    }
+    // 최종 on/off를 저장하고(필요시 실제 워터마크 매니저 호출 위치)
+    private static void applyWatermark(boolean on){
+        watermarkActive = on;               // 기존 필드에 최종값 반영
+        // TODO: 실제 워터마크 토글 호출이 있다면 여기서 호출
+        System.out.println("[StatusServer] watermark(final)=" + on);
+    }
+
+
+
+
     // 공통 응답 유틸
     private static boolean isClientAbort(IOException e){
         String m = (e.getMessage() == null ? "" : e.getMessage()).toLowerCase();
@@ -360,18 +381,28 @@ public class StatusServer {
         public void handle(HttpExchange ex) {
             try {
                 if (handleCorsPreflight(ex)) return;
-                if (!"POST".equalsIgnoreCase(ex.getRequestMethod()) && !"OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
-                    addCors(ex); ex.sendResponseHeaders(405, 0); ex.getResponseBody().close(); return;
+                if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                    sendJson(ex, 405, "{\"ok\":false}");
+                    return;
                 }
                 String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 boolean active = body.contains("\"active\":true");
-                watermarkActive = active;
-                System.out.println("[StatusServer] watermarkActive=" + active + " body=" + body);
-                // TODO: 실제 워터마크 토글 호출 지점 연결(현재는 로깅만)
+
+                // FE 신호 저장
+                feActive = active;
+
+                // 최종 상태 계산 & 반영
+                boolean on = isWatermarkActive();
+                applyWatermark(on);
+
                 sendJson(ex, 200, "{\"ok\":true}");
-            } catch (Exception e) { e.printStackTrace(); }
+            } catch (Exception e) {
+                e.printStackTrace();
+                try { sendJson(ex, 500, "{\"ok\":false}"); } catch (Exception ignore) {}
+            }
         }
     }
+
 
     // 다운로드 태깅(스테가 삽입 후 메타 수신)
     static class DownloadTagHandler implements HttpHandler {
