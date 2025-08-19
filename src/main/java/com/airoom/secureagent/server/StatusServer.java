@@ -11,6 +11,7 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import oshi.SystemInfo;
+import oshi.hardware.CentralProcessor;
 import java.util.concurrent.ThreadLocalRandom;
 
 import com.google.gson.Gson;
@@ -49,6 +50,7 @@ public class StatusServer {
     private static volatile String startedAt    = null;
     private static volatile boolean watermarkActive = false;
     private static final SystemInfo SI = new SystemInfo();
+    private static volatile long[] prevTicks = null;
 
     // 설정 진입점
     public static void configure(String version, String sha256){
@@ -361,19 +363,35 @@ public class StatusServer {
 
     // CPU/메모리 노출
     static class MetricsHandler implements HttpHandler {
+        @Override
         public void handle(HttpExchange ex) {
             try {
-                double cpu = SI.getHardware().getProcessor().getSystemCpuLoadBetweenTicks() * 100.0;
+                CentralProcessor cpu = SI.getHardware().getProcessor();
+
+                if (prevTicks == null) {
+                    // 최초 호출: 기준 ticks 확보 후 짧게 대기
+                    prevTicks = cpu.getSystemCpuLoadTicks();
+                    try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                }
+                long[] cur = cpu.getSystemCpuLoadTicks();
+                double load = cpu.getSystemCpuLoadBetweenTicks(prevTicks) * 100.0;
+                prevTicks = cur;
+
                 long total = SI.getHardware().getMemory().getTotal();
                 long avail = SI.getHardware().getMemory().getAvailable();
                 long used  = total - avail;
+
                 String json = String.format(java.util.Locale.ROOT,
                         "{\"cpu\":%.2f,\"memUsed\":%d,\"memTotal\":%d,\"ts\":%d}",
-                        cpu, used, total, System.currentTimeMillis());
+                        load, used, total, System.currentTimeMillis());
                 sendJson(ex, 200, json);
-            } catch (Exception e) { e.printStackTrace(); }
+            } catch (Exception e) {
+                e.printStackTrace();
+                try { sendJson(ex, 500, "{\"ok\":false}"); } catch (Exception ignore) {}
+            }
         }
     }
+
 
 
 }
