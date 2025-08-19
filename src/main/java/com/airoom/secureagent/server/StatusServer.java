@@ -1,6 +1,9 @@
 package com.airoom.secureagent.server;
 
+import com.airoom.secureagent.log.LogManager;
+import com.airoom.secureagent.payload.PayloadManager;
 import com.airoom.secureagent.util.CryptoUtil;
+import com.google.gson.JsonParser;
 import com.sun.net.httpserver.*;
 
 import javax.crypto.Mac;
@@ -113,6 +116,8 @@ public class StatusServer {
         server.createContext("/activate-watermark", new ActivateHandler());
         server.createContext("/download-tag", new DownloadTagHandler());
         server.createContext("/metrics", new MetricsHandler());
+        server.createContext("/bind-session", new BindSessionHandler());
+
 
         server.setExecutor(null);
         server.start();
@@ -403,6 +408,28 @@ public class StatusServer {
         }
     }
 
+    static class BindSessionHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) {
+            try {
+                if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                    ex.sendResponseHeaders(405, 0); ex.getResponseBody().close(); return;
+                }
+                String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                JsonObject j = JsonParser.parseString(body).getAsJsonObject();
+                String memberId = j.has("memberId") ? j.get("memberId").getAsString() : null;
+                String jwt = j.has("jwt") ? j.get("jwt").getAsString() : null;
+
+                // 에이전트 내부에 세션 기억
+                LogManager.setUserId(memberId);      // 없으면 setter 추가
+                PayloadManager.bindUser(memberId, jwt); // 없으면 no-op로 만들어도 OK
+
+                sendJson(ex, 200, "{\"ok\":true}");
+                System.out.println("[StatusServer] bind-session: memberId=" + memberId);
+            } catch (Exception e) {
+                try { ex.sendResponseHeaders(500, 0); ex.getResponseBody().close(); } catch (Exception ignore) {}
+            }
+        }
+    }
 
 
 }
