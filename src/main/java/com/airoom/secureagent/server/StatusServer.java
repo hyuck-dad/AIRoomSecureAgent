@@ -79,17 +79,16 @@ public class StatusServer {
     }
 
     public static void startServer() throws Exception {
-        int port = 4455;
+        int start = 4455, end = 4460;
         HttpServer server = null;
-
-        while (port <= 65535) {
+        for (int port = start; port <= end; port++) {
             try {
                 server = HttpServer.create(new InetSocketAddress(port), 0);
                 runningPort = port;
                 break;
-            } catch (BindException e) { port++; }
+            } catch (BindException e) { /* 다음 포트 시도 */ }
         }
-        if (server == null) throw new RuntimeException("[SecureAgent] 사용 가능한 포트를 찾을 수 없습니다.");
+        if (server == null) throw new RuntimeException("[SecureAgent] 4455~4460 포트를 모두 사용할 수 없습니다.");
 
         // 시작시각 기록
         startedAt = Instant.now().toString();
