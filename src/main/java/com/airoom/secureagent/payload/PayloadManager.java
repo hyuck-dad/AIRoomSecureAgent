@@ -38,21 +38,20 @@ public class PayloadManager {
      * @param action    이벤트 유형 (EventType)
      */
 
-    private static volatile String CURRENT_UID = null;
-    private static volatile String CURRENT_JWT = null;
+    private static volatile String BOUND_UID = "unknown";
+    private static volatile String BOUND_JWT = null;
 
-    public static void bindUser(String uid, String jwt) {
-        CURRENT_UID = (uid == null || uid.isBlank()) ? null : uid;
-        CURRENT_JWT = jwt; // 필요 시 null 허용
+    public static void bindUser(String uid, String jwt){
+        if (uid != null && !uid.isBlank()) BOUND_UID = uid;
+        BOUND_JWT = jwt;
     }
-
-    public static String boundUser() { return CURRENT_UID; }
-    public static String boundJwt()  { return CURRENT_JWT; }
+    public static String boundUserId(){ return BOUND_UID; }
+    public static String boundJwt(){ return BOUND_JWT; }
     // build()에서 uid가 비어있으면 바운드된 사용자로 대체
     public static ForensicPayload build(DeviceFingerprint fp, String uid,
                                         String contentId, EventType action) {
         String useUid = (uid == null || uid.isBlank() || "-".equals(uid))
-                ? (CURRENT_UID != null ? CURRENT_UID : "-")
+                ? (BOUND_UID != null ? BOUND_UID : "-")
                 : uid;
         String ts = OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
 

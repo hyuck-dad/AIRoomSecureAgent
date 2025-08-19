@@ -39,7 +39,7 @@ public class LogManager {
     private static volatile String USER_ID = "unknown";
     public static String getUserId() { return USER_ID; }
     public static void setUserId(String uid) {
-        USER_ID = (uid == null || uid.isBlank()) ? "unknown" : uid;
+        if (uid != null && !uid.isBlank()) USER_ID = uid;
     }
 
     private static Path resolveLogFile() {
