@@ -105,7 +105,7 @@ public class StatusServer {
 
         server.setExecutor(null);
         server.start();
-        System.out.println("[SecureAgent] 상태 서버가 " + runningPort + " 포트에서 실행 중입니다.");
+        System.out.println("[SecureAgent] 상태 서버가 " + runningPort + " 포트에서 실행 중입니다. ver=" + agentVersion + " sha=" + agentSha256);
     }
 
 
