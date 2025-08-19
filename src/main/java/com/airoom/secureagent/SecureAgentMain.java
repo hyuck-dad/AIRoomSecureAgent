@@ -1,5 +1,6 @@
 package com.airoom.secureagent;
 // 상단 import에 추가
+import com.airoom.secureagent.browser.BrowserContextVerifier;
 import com.airoom.secureagent.payload.PayloadFactory;
 import com.airoom.secureagent.payload.PayloadManager;
 import com.airoom.secureagent.payload.ForensicPayload;
@@ -97,6 +98,19 @@ public class SecureAgentMain {
             ScheduledExecutorService es = Executors.newScheduledThreadPool(2);
             es.scheduleAtFixedRate(ProcessMonitor::detect, 0, 5, TimeUnit.SECONDS);
 
+            // === 브라우저 활성탭 감시 → Agent 신호 세팅 ===
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "browser-context");
+                t.setDaemon(true);
+                return t;
+            }).scheduleAtFixedRate(() -> {
+                try {
+                    boolean open = BrowserContextVerifier.isTargetBrowserOpenAnywhere();
+                    StatusServer.setAgentActive(open); // 내부에서 applyWatermark까지 호출됨
+                } catch (Throwable ignore) {}
+            }, 0, 1, java.util.concurrent.TimeUnit.SECONDS);
+
+
             /* 3) 파일 시스템 감시(GlobalWatcher) */
             Path home = Paths.get(System.getProperty("user.home"));
             List<Path> watchRoots = new ArrayList<>(
@@ -125,6 +139,8 @@ public class SecureAgentMain {
                 try { new GlobalWatcher(watchRoots).run(); }
                 catch (Exception e) { e.printStackTrace(); }
             });
+
+
 
             /* 4) 선택: 스모크 테스트 (가짜 이벤트로 탐지 파이프라인 빠르게 검증)
                    실행 옵션 예)  java -Daidt.smoke=true -jar app.jar
