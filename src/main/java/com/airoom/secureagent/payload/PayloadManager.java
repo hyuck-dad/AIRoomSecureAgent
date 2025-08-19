@@ -37,15 +37,29 @@ public class PayloadManager {
      * @param contentId 컨텐츠 식별자 (없으면 "-" 권장)
      * @param action    이벤트 유형 (EventType)
      */
+
+    private static volatile String CURRENT_UID = null;
+    private static volatile String CURRENT_JWT = null;
+
+    public static void bindUser(String uid, String jwt) {
+        CURRENT_UID = (uid == null || uid.isBlank()) ? null : uid;
+        CURRENT_JWT = jwt; // 필요 시 null 허용
+    }
+
+    public static String boundUser() { return CURRENT_UID; }
+    public static String boundJwt()  { return CURRENT_JWT; }
+    // build()에서 uid가 비어있으면 바운드된 사용자로 대체
     public static ForensicPayload build(DeviceFingerprint fp, String uid,
                                         String contentId, EventType action) {
-
+        String useUid = (uid == null || uid.isBlank() || "-".equals(uid))
+                ? (CURRENT_UID != null ? CURRENT_UID : "-")
+                : uid;
         String ts = OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
 
         return new ForensicPayload(
                 1,                                  // ver
                 APP_ID,                             // app
-                uid,                                // uid
+                useUid,                                // uid
                 DeviceIdGenerator.compute(fp),      // deviceId (20 hex)
                 fp.macQuality() == null ? "NONE" : fp.macQuality().name(), // macQuality
                 fp.vmSuspect(),                     // vm
