@@ -133,7 +133,7 @@
                             <!-- 앱 메타 -->
                             <name>SecureAgent</name>
                             <vendor>AIROOM</vendor>
-                            <appVersion>0.9.0</appVersion>
+                            <appVersion>0.9.3</appVersion>
                             <type>EXE</type>
 
                             <!-- Windows 옵션 -->
@@ -149,8 +149,8 @@
                                 <javaOption>-Xmx512m</javaOption>
                                 <javaOption>-Daidt.spool.encrypt=true</javaOption>
                                 <javaOption>-Dsecureagent.test=true</javaOption>
-                                <javaOption>-Dsecureagent.smoke=true</javaOption>
-                                <javaOption>-Dsecureagent.forensic=true</javaOption>
+                                <javaOption>-Dsecureagent.smoke=false</javaOption>
+                                <javaOption>-Dsecureagent.forensic=false</javaOption>
                                 <javaOption>-Dsecureagent.devlog=true</javaOption>
                             </javaOptions>
                         </configuration>

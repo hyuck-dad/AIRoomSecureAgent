@@ -82,7 +82,7 @@ public class StegoDispatcher {
                 ForensicPayload p = PayloadFactory.forEvent(EventType.STEGO_IMAGE, abs);
                 String encB64 = PayloadManager.encryptPayload(p);                 // AES-Base64
                 String token  = PayloadManager.makeVisibleToken(p, 12);           // HMAC 12자
-                String wmText = "AIDT " + token + " " + p.ts();                   // 화면/파일 표시용
+                String wmText = "AIROOM" + token + " " + PayloadManager.boundUserId() + " " + p.ts();                   // 화면/파일 표시용
 
                 ok = ImageStegoWithWatermarkEncoder.encodeEncrypted(
                         abs, abs, encB64, wmText, WATERMARK_OPACITY);
@@ -93,7 +93,7 @@ public class StegoDispatcher {
                 ForensicPayload p = PayloadFactory.forEvent(EventType.STEGO_PDF, abs);
                 String encB64 = PayloadManager.encryptPayload(p);
                 String token  = PayloadManager.makeVisibleToken(p, 12);
-                String wmText = "AIDT " + token + " " + p.ts();
+                String wmText = "AIROOM" + token + " " + PayloadManager.boundUserId() + " " + p.ts();
 
                 ok = PdfStegoWithWatermarkEncoder.embedEncrypted(
                         abs, abs, encB64, wmText, WATERMARK_OPACITY);

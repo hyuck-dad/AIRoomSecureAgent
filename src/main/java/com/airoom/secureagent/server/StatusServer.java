@@ -1,15 +1,22 @@
 package com.airoom.secureagent.server;
 
+import com.airoom.secureagent.log.LogManager;
+import com.airoom.secureagent.payload.PayloadManager;
 import com.airoom.secureagent.util.CryptoUtil;
+import com.airoom.secureagent.watermark.WatermarkOverlay;
+import com.google.gson.JsonParser;
 import com.sun.net.httpserver.*;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
-
+import java.time.Instant;
+import oshi.SystemInfo;
+import oshi.hardware.CentralProcessor;
 import java.util.concurrent.ThreadLocalRandom;
 
 import com.google.gson.Gson;
@@ -43,42 +50,191 @@ public class StatusServer {
         return true;
     }
 
-    public static void startServer() throws Exception {
-        int port = 4455;
-        HttpServer server = null;
+    private static volatile String agentVersion = "1.0.0-dev";
+    private static volatile String agentSha256  = "DEV-SHA256-PLACEHOLDER";
+    private static volatile String startedAt    = null;
+    private static volatile boolean watermarkActive = false;
+    private static final SystemInfo SI = new SystemInfo();
+    private static volatile long[] prevTicks = null;
 
-        while (port <= 65535) {
+    // 설정 진입점
+    public static void configure(String version, String sha256){
+        if (version != null && !version.isBlank()) agentVersion = version;
+        if (sha256  != null && !sha256.isBlank())  agentSha256  = sha256;
+    }
+
+    private static volatile boolean feActive = false;    // FE 신호
+    private static volatile boolean agentActive = false; // Verifier 신호
+    private static volatile long feLastAt = 0L;
+    private static final long FE_STALE_MS = 8000; // 8초 동안 핑 없으면 FE 신호 만료로 간주
+    public static void setAgentActive(boolean active){
+        agentActive = active;
+        boolean on = isWatermarkActive();
+        applyWatermark(on);
+    }
+    private static volatile boolean overlayOn = false;
+    private static volatile String lastOverlayText = null;
+    private static volatile boolean lastAppliedOn  = false;
+    private static volatile Boolean lastOnState = null;
+
+    private static boolean isWatermarkActive(){
+        final long now = System.currentTimeMillis();
+        final boolean feAlive = feActive && (now - feLastAt) < FE_STALE_MS;
+        return feAlive || agentActive;
+    }
+    // 최종 on/off를 저장하고(필요시 실제 워터마크 매니저 호출 위치)
+    private static void applyWatermark(boolean on){
+        // 현재 표시되어야 할 텍스트 (원하면 포맷 자유롭게)
+        String text = "AIRoom " + PayloadManager.boundUserId();
+
+        if (lastOnState != null && lastOnState == on) {
+            if (on && text.equals(lastOverlayText)) return;
+            if (!on) return;
+        }
+
+        if (on) {
+            boolean needRefreshText = (lastOverlayText == null || !text.equals(lastOverlayText));
+            if (!overlayOn) {
+                WatermarkOverlay.showOverlay(text, 0.12f);
+                overlayOn = true;
+                System.out.println("[StatusServer] watermark(final)=true");
+            } else if (needRefreshText) {
+                // 상태는 그대로(on)이지만 사용자 바뀜 → 텍스트만 새로 그림
+                WatermarkOverlay.showOverlay(text, 0.12f); // updateOverlayText(...)가 있으면 그걸로 교체
+                System.out.println("[StatusServer] watermark(text-refresh) uid=" + PayloadManager.boundUserId());
+            }
+            lastOverlayText = text;
+            watermarkActive = true;
+
+        } else {
+            // off 처리
+            if (overlayOn) {
+                WatermarkOverlay.hideOverlay();
+                overlayOn = false;
+                lastOverlayText = null;
+                watermarkActive = false;
+                System.out.println("[StatusServer] watermark(final)=false");
+            }
+        }
+        lastOnState = on;
+    }
+
+      // 서버 시작 시 워터마크 상태를 주기적으로 재평가하여 스테일을 정리
+      private static void startWatermarkKeeper() {
+        java.util.concurrent.ScheduledExecutorService es =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+              Thread t = new Thread(r, "wm-keeper");
+              t.setDaemon(true);
+              return t;
+            });
+        es.scheduleAtFixedRate(() -> {
+          try {
+            boolean on = isWatermarkActive();
+            if (on != lastAppliedOn) {
+              applyWatermark(on);
+              lastAppliedOn = on;
+            } else if (on) {
+              // 상태는 on 유지 중인데 uid가 바뀌었으면 텍스트만 갱신
+              String text = "AIRoom " + PayloadManager.boundUserId();
+              if (!text.equals(lastOverlayText)) {
+                WatermarkOverlay.showOverlay(text, 0.12f);
+                lastOverlayText = text;
+                // 로그 과다 방지: 상태변화 아닐 땐 콘솔 찍지 않음
+              }
+            }
+          } catch (Throwable ignore) {}
+        }, 0, 1, java.util.concurrent.TimeUnit.SECONDS);
+      }
+
+
+    // 공통 응답 유틸
+    private static boolean isClientAbort(IOException e){
+        String m = (e.getMessage() == null ? "" : e.getMessage()).toLowerCase();
+        return m.contains("connection reset")
+                || m.contains("broken pipe")
+                || m.contains("insufficient bytes")
+                || m.contains("forcibly closed")                 // EN: An existing connection was forcibly closed...
+                || m.contains("원격 호스트에 의해")                // KO: 원격 호스트에 의해 강제로 끊겼습니다
+                || m.contains("호스트 시스템의 소프트웨어");        // KO: ...호스트 시스템의 소프트웨어에 의해 중단
+    }
+    private static void addCors(HttpExchange ex){
+        Headers h = ex.getResponseHeaders();
+        h.set("Access-Control-Allow-Origin", "*");
+        h.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+        h.set("Access-Control-Allow-Headers", "Content-Type");
+        h.set("Access-Control-Max-Age", "1800");
+    }
+    private static boolean handleCorsPreflight(HttpExchange ex) throws IOException {
+        if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+            addCors(ex);
+            ex.sendResponseHeaders(204, -1); // No Content
+            ex.close();
+            return true;
+        }
+        return false;
+    }
+    private static void sendJson(HttpExchange ex, int code, String json) throws Exception {
+        addCors(ex);
+        if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+            ex.sendResponseHeaders(204, -1);
+            ex.close(); return;
+        }
+        byte[] b = json.getBytes(StandardCharsets.UTF_8);
+        ex.getResponseHeaders().set("Content-Type","application/json; charset=utf-8");
+        try {
+            ex.sendResponseHeaders(code, b.length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(b); }
+        } catch (IOException ioe) {
+            if (!isClientAbort(ioe)) throw ioe; // 클라 중단만 조용히 무시
+        } finally {
+            try { ex.close(); } catch (Exception ignore) {}
+        }
+    }
+
+    public static void startServer() throws Exception {
+        int start = 4455, end = 4460;
+        HttpServer server = null;
+        for (int port = start; port <= end; port++) {
             try {
                 server = HttpServer.create(new InetSocketAddress(port), 0);
                 runningPort = port;
                 break;
-            } catch (BindException e) { port++; }
+            } catch (BindException e) { /* 다음 포트 시도 */ }
         }
-        if (server == null) throw new RuntimeException("[SecureAgent] 사용 가능한 포트를 찾을 수 없습니다.");
+        if (server == null) throw new RuntimeException("[SecureAgent] 4455~4460 포트를 모두 사용할 수 없습니다.");
+
+        // 시작시각 기록
+        startedAt = Instant.now().toString();
 
         server.createContext("/status", new StatusHandler());
         server.createContext("/log", new LogHandler());
         server.createContext("/flush", new FlushHandler()); // ← 추가
         server.createContext("/net/fail", new NetFailHandler());
         server.createContext("/event", new EventHandler());
+        server.createContext("/activate-watermark", new ActivateHandler());
+        server.createContext("/download-tag", new DownloadTagHandler());
+        server.createContext("/metrics", new MetricsHandler());
+        server.createContext("/bind-session", new BindSessionHandler());
+
 
         server.setExecutor(null);
         server.start();
-        System.out.println("[SecureAgent] 상태 서버가 " + runningPort + " 포트에서 실행 중입니다.");
+        System.out.println("[SecureAgent] 상태 서버가 " + runningPort + " 포트에서 실행 중입니다. ver=" + agentVersion + " sha=" + agentSha256);
+        startWatermarkKeeper(); // 스테일 감시 루프 시작
     }
 
 
     static class StatusHandler implements HttpHandler {
         public void handle(HttpExchange exchange) {
             try {
-                String response = "OK";
-                exchange.sendResponseHeaders(200, response.length());
-                OutputStream os = exchange.getResponseBody();
-                os.write(response.getBytes());
-                os.close();
+                String json = String.format(
+                        "{\"version\":\"%s\",\"sha256\":\"%s\",\"startedAt\":\"%s\",\"heartbeatId\":\"%d\",\"port\":%d}",
+                        agentVersion, agentSha256, startedAt, System.currentTimeMillis(), runningPort);
+                sendJson(exchange, 200, json);
             } catch (Exception e) { e.printStackTrace(); }
         }
     }
+
 
     static class LogHandler implements HttpHandler {
         public void handle(HttpExchange exchange) {
@@ -286,4 +442,124 @@ public class StatusServer {
             return sb.substring(0, n);
         }
     }
+
+
+    // 워터마크 on/off
+    static class ActivateHandler implements HttpHandler {
+        public void handle(HttpExchange ex) {
+            try {
+                if (handleCorsPreflight(ex)) return;
+                if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                    sendJson(ex, 405, "{\"ok\":false}");
+                    return;
+                }
+                String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                boolean active = body.contains("\"active\":true");
+
+                // FE 신호 저장 + 타임스탬프 갱신
+                feActive = active;
+                feLastAt = System.currentTimeMillis();
+
+                // 최종 상태 계산 & 반영
+                boolean on = isWatermarkActive();
+                applyWatermark(on);
+
+                sendJson(ex, 200, "{\"ok\":true}");
+            } catch (Exception e) {
+                e.printStackTrace();
+                try { sendJson(ex, 500, "{\"ok\":false}"); } catch (Exception ignore) {}
+            }
+        }
+    }
+
+
+    // 다운로드 태깅(스테가 삽입 후 메타 수신)
+    static class DownloadTagHandler implements HttpHandler {
+        public void handle(HttpExchange ex) {
+            try {
+                if (handleCorsPreflight(ex)) return;
+                if (!"POST".equalsIgnoreCase(ex.getRequestMethod()) && !"OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+                    addCors(ex); ex.sendResponseHeaders(405, 0); ex.getResponseBody().close(); return;
+                }
+                String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                System.out.println("[download-tag] " + body);
+                // TODO: 필요한 경우 파일명 해시/사이즈 등 파싱해 별도 로컬 로그/큐에 저장
+                sendJson(ex, 200, "{\"ok\":true}");
+            } catch (Exception e) { e.printStackTrace(); }
+        }
+    }
+
+    // CPU/메모리 노출
+    static class MetricsHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange ex) {
+            try {
+                CentralProcessor cpu = SI.getHardware().getProcessor();
+
+                if (prevTicks == null) {
+                    // 최초 호출: 기준 ticks 확보 후 짧게 대기
+                    prevTicks = cpu.getSystemCpuLoadTicks();
+                    try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                }
+                long[] cur = cpu.getSystemCpuLoadTicks();
+                double load = cpu.getSystemCpuLoadBetweenTicks(prevTicks) * 100.0;
+                prevTicks = cur;
+
+                long total = SI.getHardware().getMemory().getTotal();
+                long avail = SI.getHardware().getMemory().getAvailable();
+                long used  = total - avail;
+
+                String json = String.format(java.util.Locale.ROOT,
+                        "{\"cpu\":%.2f,\"memUsed\":%d,\"memTotal\":%d,\"ts\":%d}",
+                        load, used, total, System.currentTimeMillis());
+                sendJson(ex, 200, json);
+            } catch (Exception e) {
+                e.printStackTrace();
+                try { sendJson(ex, 500, "{\"ok\":false}"); } catch (Exception ignore) {}
+            }
+        }
+    }
+
+    static class BindSessionHandler implements HttpHandler {
+        @Override public void handle(HttpExchange ex) {
+            try {
+                if (handleCorsPreflight(ex)) return;
+                if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                    sendJson(ex, 405, "{\"ok\":false}");             // CORS 헤더 달고 405
+                    return;
+                }
+                String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                JsonObject j;
+                try {
+                    j = JsonParser.parseString(body).getAsJsonObject();
+                } catch (Throwable t) {
+                    System.out.println("[bind-session] bad json: " + body + " / " + t);
+                    sendJson(ex, 400, "{\"ok\":false,\"err\":\"bad_json\"}");
+                    return;
+                }
+                String memberId = j.has("memberId") && !j.get("memberId").isJsonNull()
+                        ? j.get("memberId").getAsString() : null;
+                String jwt = j.has("jwt") && !j.get("jwt").isJsonNull()
+                        ? j.get("jwt").getAsString() : null;
+
+                // 에이전트 내부에 세션 기억
+                try {
+                    LogManager.setUserId(memberId); // 있어도 되고 없어도 되는 부가 저장
+                } catch (Throwable t) {
+                    System.out.println("[bind-session] LogManager.setUserId skip: " + t);
+                }
+                PayloadManager.bindUser(memberId, jwt); // 없으면 no-op로 만들어도 OK
+                System.out.println("[StatusServer] bind-session: memberId=" + memberId);
+
+                applyWatermark(isWatermarkActive()); // 오버레이가 이미 켜져 있으면 텍스트 즉시 새로고침
+
+                sendJson(ex, 200, "{\"ok\":true}");
+            } catch (Exception e) {
+                e.printStackTrace(); // ← 원인 파악을 위해 일단 출력
+                try { sendJson(ex, 500, "{\"ok\":false}"); } catch (Exception ignore) {}
+            }
+        }
+    }
+
+
 }
