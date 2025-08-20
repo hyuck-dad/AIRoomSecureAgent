@@ -74,6 +74,7 @@ public class StatusServer {
     }
     private static volatile boolean overlayOn = false;
     private static volatile String lastOverlayText = null;
+    private static volatile boolean lastAppliedOn  = false;
 
     private static boolean isWatermarkActive(){
         final long now = System.currentTimeMillis();
@@ -111,7 +112,32 @@ public class StatusServer {
         }
     }
 
-
+      // 서버 시작 시 워터마크 상태를 주기적으로 재평가하여 스테일을 정리
+      private static void startWatermarkKeeper() {
+        java.util.concurrent.ScheduledExecutorService es =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+              Thread t = new Thread(r, "wm-keeper");
+              t.setDaemon(true);
+              return t;
+            });
+        es.scheduleAtFixedRate(() -> {
+          try {
+            boolean on = isWatermarkActive();
+            if (on != lastAppliedOn) {
+              applyWatermark(on);
+              lastAppliedOn = on;
+            } else if (on) {
+              // 상태는 on 유지 중인데 uid가 바뀌었으면 텍스트만 갱신
+              String text = "AIRoom " + PayloadManager.boundUserId();
+              if (!text.equals(lastOverlayText)) {
+                WatermarkOverlay.showOverlay(text, 0.12f);
+                lastOverlayText = text;
+                // 로그 과다 방지: 상태변화 아닐 땐 콘솔 찍지 않음
+              }
+            }
+          } catch (Throwable ignore) {}
+        }, 0, 1, java.util.concurrent.TimeUnit.SECONDS);
+      }
 
 
     // 공통 응답 유틸
@@ -187,6 +213,7 @@ public class StatusServer {
         server.setExecutor(null);
         server.start();
         System.out.println("[SecureAgent] 상태 서버가 " + runningPort + " 포트에서 실행 중입니다. ver=" + agentVersion + " sha=" + agentSha256);
+        startWatermarkKeeper(); // 스테일 감시 루프 시작
     }
 
 
