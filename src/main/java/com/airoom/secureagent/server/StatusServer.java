@@ -75,6 +75,7 @@ public class StatusServer {
     private static volatile boolean overlayOn = false;
     private static volatile String lastOverlayText = null;
     private static volatile boolean lastAppliedOn  = false;
+    private static volatile Boolean lastOnState = null;
 
     private static boolean isWatermarkActive(){
         final long now = System.currentTimeMillis();
@@ -86,30 +87,36 @@ public class StatusServer {
         // 현재 표시되어야 할 텍스트 (원하면 포맷 자유롭게)
         String text = "AIRoom " + PayloadManager.boundUserId();
 
+        if (lastOnState != null && lastOnState == on) {
+            if (on && text.equals(lastOverlayText)) return;
+            if (!on) return;
+        }
+
         if (on) {
             boolean needRefreshText = (lastOverlayText == null || !text.equals(lastOverlayText));
             if (!overlayOn) {
                 WatermarkOverlay.showOverlay(text, 0.12f);
                 overlayOn = true;
-                lastOverlayText = text;
                 System.out.println("[StatusServer] watermark(final)=true");
             } else if (needRefreshText) {
                 // 상태는 그대로(on)이지만 사용자 바뀜 → 텍스트만 새로 그림
                 WatermarkOverlay.showOverlay(text, 0.12f); // updateOverlayText(...)가 있으면 그걸로 교체
-                lastOverlayText = text;
                 System.out.println("[StatusServer] watermark(text-refresh) uid=" + PayloadManager.boundUserId());
             }
+            lastOverlayText = text;
             watermarkActive = true;
-            return;
+
+        } else {
+            // off 처리
+            if (overlayOn) {
+                WatermarkOverlay.hideOverlay();
+                overlayOn = false;
+                lastOverlayText = null;
+                watermarkActive = false;
+                System.out.println("[StatusServer] watermark(final)=false");
+            }
         }
-        // off 처리
-        if (overlayOn) {
-            WatermarkOverlay.hideOverlay();
-            overlayOn = false;
-            lastOverlayText = null;
-            watermarkActive = false;
-            System.out.println("[StatusServer] watermark(final)=false");
-        }
+        lastOnState = on;
     }
 
       // 서버 시작 시 워터마크 상태를 주기적으로 재평가하여 스테일을 정리
