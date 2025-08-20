@@ -65,6 +65,8 @@ public class StatusServer {
 
     private static volatile boolean feActive = false;    // FE 신호
     private static volatile boolean agentActive = false; // Verifier 신호
+    private static volatile long feLastAt = 0L;
+    private static final long FE_STALE_MS = 8000; // 8초 동안 핑 없으면 FE 신호 만료로 간주
     public static void setAgentActive(boolean active){
         agentActive = active;
         boolean on = isWatermarkActive();
@@ -74,7 +76,9 @@ public class StatusServer {
     private static volatile String lastOverlayText = null;
 
     private static boolean isWatermarkActive(){
-        return feActive || agentActive;
+        final long now = System.currentTimeMillis();
+        final boolean feAlive = feActive && (now - feLastAt) < FE_STALE_MS;
+        return feAlive || agentActive;
     }
     // 최종 on/off를 저장하고(필요시 실제 워터마크 매니저 호출 위치)
     private static void applyWatermark(boolean on){
@@ -418,8 +422,9 @@ public class StatusServer {
                 String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 boolean active = body.contains("\"active\":true");
 
-                // FE 신호 저장
+                // FE 신호 저장 + 타임스탬프 갱신
                 feActive = active;
+                feLastAt = System.currentTimeMillis();
 
                 // 최종 상태 계산 & 반영
                 boolean on = isWatermarkActive();
