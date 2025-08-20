@@ -53,8 +53,17 @@ public class SecureAgentMain {
     // 클래스 상단 플래그 근처에 추가
     private static final boolean FORENSIC_SMOKE = Boolean.getBoolean("secureagent.forensic");  // 포렌식 체인(토큰/HMAC, /event 검증) 빠른 점검
 
+    // 0.5초 주기로 돌리되, 디바운스 1.2초
+    private static volatile boolean lastOpen=false;
+    private static volatile long lastFlipMs=0;
+    private static final int DEBOUNCE_MS=1200;
 
     public static void main(String[] args) {
+//        String imgDecode = ImageStegoDecoder.decode("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\22222.jpg");
+//        System.out.println(imgDecode);
+//        String pdfDecode = PdfStegoDecoder.extract("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\111.pdf");
+//        System.out.println(pdfDecode);
+
         // 0-a) 단일 실행 보장 (per-user 설치 구조와 맞춰 LOCALAPPDATA 쪽에 락 파일)
         Path lockFile;
         try {
@@ -106,9 +115,14 @@ public class SecureAgentMain {
             }).scheduleAtFixedRate(() -> {
                 try {
                     boolean open = BrowserContextVerifier.isTargetBrowserOpenAnywhere();
-                    StatusServer.setAgentActive(open); // 내부에서 applyWatermark까지 호출됨
+                    long now = System.currentTimeMillis();
+                    if (open != lastOpen && (now - lastFlipMs) >= DEBOUNCE_MS) {
+                        lastOpen = open; lastFlipMs = now;
+                        StatusServer.setAgentActive(open); // 내부에서 applyWatermark까지 호출됨
+                    }
+                    // 디버그 로그는 상태 바뀔 때만 (StatusServer.setAgentActive 내부에서 on/off 로그가 이미 남음)
                 } catch (Throwable ignore) {}
-            }, 0, 1, java.util.concurrent.TimeUnit.SECONDS);
+            }, 0, 500, java.util.concurrent.TimeUnit.MILLISECONDS);
 
 
             /* 3) 파일 시스템 감시(GlobalWatcher) */
@@ -324,7 +338,7 @@ public class SecureAgentMain {
             ForensicPayload pImg = PayloadFactory.forEvent(EventType.STEGO_IMAGE, imgOut.toString());
             String encB64Img = PayloadManager.encryptPayload(pImg);
             String tokenImg  = PayloadManager.makeVisibleToken(pImg, 12);
-            String wmImg     = "AIDT " + tokenImg + " " + pImg.ts();
+            String wmImg     = "AIROOM" + tokenImg + " " + PayloadManager.boundUserId() + " " + pImg.ts();
 
             ImageStegoWithWatermarkEncoder.encodeEncrypted(
                     imgIn.toString(), imgOut.toString(), encB64Img, wmImg, 0.12f);
@@ -341,7 +355,7 @@ public class SecureAgentMain {
             ForensicPayload pPdf = PayloadFactory.forEvent(EventType.STEGO_PDF, pdfOut.toString());
             String encB64Pdf = PayloadManager.encryptPayload(pPdf);
             String tokenPdf  = PayloadManager.makeVisibleToken(pPdf, 12);
-            String wmPdf     = "AIDT " + tokenPdf + " " + pPdf.ts();
+            String wmPdf     = "AIROOM" + tokenPdf + " " + PayloadManager.boundUserId() + " " + pPdf.ts();
 
             PdfStegoWithWatermarkEncoder.embedEncrypted(
                     pdfIn.toString(), pdfOut.toString(), encB64Pdf, wmPdf, 0.12f);

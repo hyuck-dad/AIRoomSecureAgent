@@ -3,6 +3,7 @@ package com.airoom.secureagent.server;
 import com.airoom.secureagent.log.LogManager;
 import com.airoom.secureagent.payload.PayloadManager;
 import com.airoom.secureagent.util.CryptoUtil;
+import com.airoom.secureagent.watermark.WatermarkOverlay;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.*;
 
@@ -69,15 +70,41 @@ public class StatusServer {
         boolean on = isWatermarkActive();
         applyWatermark(on);
     }
+    private static volatile boolean overlayOn = false;
+    private static volatile String lastOverlayText = null;
 
     private static boolean isWatermarkActive(){
         return feActive || agentActive;
     }
     // 최종 on/off를 저장하고(필요시 실제 워터마크 매니저 호출 위치)
     private static void applyWatermark(boolean on){
-        watermarkActive = on;               // 기존 필드에 최종값 반영
-        // TODO: 실제 워터마크 토글 호출이 있다면 여기서 호출
-        System.out.println("[StatusServer] watermark(final)=" + on);
+        // 현재 표시되어야 할 텍스트 (원하면 포맷 자유롭게)
+        String text = "AIRoom " + PayloadManager.boundUserId();
+
+        if (on) {
+            boolean needRefreshText = (lastOverlayText == null || !text.equals(lastOverlayText));
+            if (!overlayOn) {
+                WatermarkOverlay.showOverlay(text, 0.12f);
+                overlayOn = true;
+                lastOverlayText = text;
+                System.out.println("[StatusServer] watermark(final)=true");
+            } else if (needRefreshText) {
+                // 상태는 그대로(on)이지만 사용자 바뀜 → 텍스트만 새로 그림
+                WatermarkOverlay.showOverlay(text, 0.12f); // updateOverlayText(...)가 있으면 그걸로 교체
+                lastOverlayText = text;
+                System.out.println("[StatusServer] watermark(text-refresh) uid=" + PayloadManager.boundUserId());
+            }
+            watermarkActive = true;
+            return;
+        }
+        // off 처리
+        if (overlayOn) {
+            WatermarkOverlay.hideOverlay();
+            overlayOn = false;
+            lastOverlayText = null;
+            watermarkActive = false;
+            System.out.println("[StatusServer] watermark(final)=false");
+        }
     }
 
 
@@ -88,7 +115,10 @@ public class StatusServer {
         String m = (e.getMessage() == null ? "" : e.getMessage()).toLowerCase();
         return m.contains("connection reset")
                 || m.contains("broken pipe")
-                || m.contains("insufficient bytes");
+                || m.contains("insufficient bytes")
+                || m.contains("forcibly closed")                 // EN: An existing connection was forcibly closed...
+                || m.contains("원격 호스트에 의해")                // KO: 원격 호스트에 의해 강제로 끊겼습니다
+                || m.contains("호스트 시스템의 소프트웨어");        // KO: ...호스트 시스템의 소프트웨어에 의해 중단
     }
     private static void addCors(HttpExchange ex){
         Headers h = ex.getResponseHeaders();
@@ -460,17 +490,33 @@ public class StatusServer {
                     return;
                 }
                 String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-                JsonObject j = JsonParser.parseString(body).getAsJsonObject();
-                String memberId = j.has("memberId") ? j.get("memberId").getAsString() : null;
-                String jwt = j.has("jwt") ? j.get("jwt").getAsString() : null;
+                JsonObject j;
+                try {
+                    j = JsonParser.parseString(body).getAsJsonObject();
+                } catch (Throwable t) {
+                    System.out.println("[bind-session] bad json: " + body + " / " + t);
+                    sendJson(ex, 400, "{\"ok\":false,\"err\":\"bad_json\"}");
+                    return;
+                }
+                String memberId = j.has("memberId") && !j.get("memberId").isJsonNull()
+                        ? j.get("memberId").getAsString() : null;
+                String jwt = j.has("jwt") && !j.get("jwt").isJsonNull()
+                        ? j.get("jwt").getAsString() : null;
 
                 // 에이전트 내부에 세션 기억
-                LogManager.setUserId(memberId);      // 없으면 setter 추가
+                try {
+                    LogManager.setUserId(memberId); // 있어도 되고 없어도 되는 부가 저장
+                } catch (Throwable t) {
+                    System.out.println("[bind-session] LogManager.setUserId skip: " + t);
+                }
                 PayloadManager.bindUser(memberId, jwt); // 없으면 no-op로 만들어도 OK
-
                 System.out.println("[StatusServer] bind-session: memberId=" + memberId);
+
+                applyWatermark(isWatermarkActive()); // 오버레이가 이미 켜져 있으면 텍스트 즉시 새로고침
+
                 sendJson(ex, 200, "{\"ok\":true}");
             } catch (Exception e) {
+                e.printStackTrace(); // ← 원인 파악을 위해 일단 출력
                 try { sendJson(ex, 500, "{\"ok\":false}"); } catch (Exception ignore) {}
             }
         }
