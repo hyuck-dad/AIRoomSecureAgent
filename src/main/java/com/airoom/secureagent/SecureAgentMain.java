@@ -12,6 +12,7 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 
+import com.airoom.secureagent.util.SelfIntegrity;
 import com.airoom.secureagent.util.SingleInstance;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -87,8 +88,13 @@ public class SecureAgentMain {
             // agent.properties 읽어와 StatusServer에 전달
             Properties p = new Properties();
             try (InputStream is = SecureAgentMain.class.getClassLoader().getResourceAsStream("agent.properties")) { if (is != null) p.load(is); }
-            StatusServer.configure(p.getProperty("agent.version","1.0.0-dev"),
-                    p.getProperty("agent.sha256Override","DEV-SHA256-PLACEHOLDER"));
+            SelfIntegrity.initOnce(SecureAgentMain.class);
+            String ver = p.getProperty("agent.version", "1.0.0");
+            String sha = p.getProperty("agent.sha256Override"); // 있으면 우선
+            if (sha == null || sha.isBlank() || "DEV-SHA256-PLACEHOLDER".equalsIgnoreCase(sha)) {
+                sha = SelfIntegrity.sha256();                   // 없으면 실시간 계산
+            }
+            StatusServer.configure(ver, sha);
             StatusServer.startServer();
 
             /* 1.5) 오프라인 스풀 + 재전송 워커 초기화 */

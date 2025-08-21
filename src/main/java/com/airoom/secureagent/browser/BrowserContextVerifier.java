@@ -10,7 +10,7 @@ public class BrowserContextVerifier {
 
     // 타겟 도메인 (나중에 config로 분리 가능)
     // 추후에, 우리팀이 개발한 사이트가 어떤 title 값으로 나타나는지 파악해야겠다.
-    private static final String[] TARGET_KEYWORDS = {"Vite"};
+    private static final String[] TARGET_KEYWORDS = {"아이룸 - AIRoom"};
     private static final boolean DEBUG = Boolean.getBoolean("aidt.debug");
     private static volatile boolean lastFound = false;
     private static volatile long lastLogMs = 0L;
