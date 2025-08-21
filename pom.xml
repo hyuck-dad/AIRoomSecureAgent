@@ -133,7 +133,7 @@
                             <!-- 앱 메타 -->
                             <name>SecureAgent</name>
                             <vendor>AIROOM</vendor>
-                            <appVersion>0.9.3</appVersion>
+                            <appVersion>0.9.4</appVersion>
                             <type>EXE</type>
 
                             <!-- Windows 옵션 -->
