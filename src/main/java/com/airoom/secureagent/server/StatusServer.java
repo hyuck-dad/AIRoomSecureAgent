@@ -18,6 +18,7 @@ import java.time.Instant;
 import oshi.SystemInfo;
 import oshi.hardware.CentralProcessor;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.Set;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -157,13 +158,51 @@ public class StatusServer {
                 || m.contains("원격 호스트에 의해")                // KO: 원격 호스트에 의해 강제로 끊겼습니다
                 || m.contains("호스트 시스템의 소프트웨어");        // KO: ...호스트 시스템의 소프트웨어에 의해 중단
     }
-    private static void addCors(HttpExchange ex){
-        Headers h = ex.getResponseHeaders();
-        h.set("Access-Control-Allow-Origin", "*");
-        h.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-        h.set("Access-Control-Allow-Headers", "Content-Type");
-        h.set("Access-Control-Max-Age", "1800");
+
+    private static final Set<String> ALLOWED_ORIGINS = Set.of(
+            "http://43.200.2.244",// 운영 프론트 오리진 정확히 (포트 포함)
+            "http://43.200.2.244:80",
+            "http://43.200.2.244:5173",
+            "http://43.200.2.244:8080",
+            "http://localhost:8080",
+            "http://localhost:5173"         // 로컬 프론트(개발)
+    );
+    private static String resolveAllowedOrigin(HttpExchange ex) {
+        String origin = ex.getRequestHeaders().getFirst("Origin");
+        if (origin != null && ALLOWED_ORIGINS.contains(origin)) return origin;
+        // 개발 중 일단 널이면 허용 안 함(필요시 와일드카드로 완화 가능)
+        return null;
     }
+
+    private static void addCors(HttpExchange ex){
+        Headers req = ex.getRequestHeaders();
+        Headers res = ex.getResponseHeaders();
+
+        String allowOrigin = resolveAllowedOrigin(ex);
+        if (allowOrigin != null) {
+            res.set("Access-Control-Allow-Origin", allowOrigin);
+            res.set("Vary", "Origin");
+        }
+        res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+
+        // 프리플라이트에서 넘어온 요청 헤더 그대로 에코 (권장)
+        String reqHdrs = req.getFirst("Access-Control-Request-Headers");
+        if (reqHdrs != null && !reqHdrs.isBlank()) {
+            res.set("Access-Control-Allow-Headers", reqHdrs);
+        } else {
+            // 프리플라이트가 아니더라도 본요청 노출 허용 헤더는 넉넉히
+            res.set("Access-Control-Allow-Headers", "content-type, authorization, x-client-id, x-requested-with");
+        }
+
+        // Chrome Private Network Access (로컬호스트/사설망 대상으로 공용 오리진에서 올 때)
+        if ("true".equalsIgnoreCase(req.getFirst("Access-Control-Request-Private-Network"))) {
+            res.set("Access-Control-Allow-Private-Network", "true");
+        }
+
+        // 캐시
+        res.set("Access-Control-Max-Age", "600");
+    }
+
     private static boolean handleCorsPreflight(HttpExchange ex) throws IOException {
         if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
             addCors(ex);
@@ -239,6 +278,10 @@ public class StatusServer {
     static class LogHandler implements HttpHandler {
         public void handle(HttpExchange exchange) {
             try {
+
+                if (handleCorsPreflight(exchange)) return;
+                addCors(exchange);
+
                 if ("POST".equals(exchange.getRequestMethod())) {
                     // 테스트용 장애 주입
                     if (isFailingNow()) {
@@ -275,6 +318,9 @@ public class StatusServer {
     static class FlushHandler implements HttpHandler {
         public void handle(HttpExchange exchange) {
             try {
+                if (handleCorsPreflight(exchange)) return;
+                addCors(exchange);
+
                 if (!"POST".equals(exchange.getRequestMethod()) && !"GET".equals(exchange.getRequestMethod())) {
                     exchange.sendResponseHeaders(405, 0);
                     exchange.getResponseBody().close();
@@ -294,6 +340,9 @@ public class StatusServer {
         @Override
         public void handle(HttpExchange exchange) {
             try {
+                if (handleCorsPreflight(exchange)) return;
+                addCors(exchange);
+
                 if (!"GET".equals(exchange.getRequestMethod()) && !"POST".equals(exchange.getRequestMethod())) {
                     exchange.sendResponseHeaders(405, 0);
                     exchange.getResponseBody().close();
