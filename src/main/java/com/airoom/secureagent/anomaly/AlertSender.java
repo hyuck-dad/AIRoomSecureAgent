@@ -70,6 +70,13 @@ public class AlertSender {
 
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
+    // AIDT_EVENT_PATH=/v1/agent/event  (기본값)
+    private static String resolveEventPath() {
+        String p = System.getProperty("aidt.eventPath", System.getenv("AIDT_EVENT_PATH"));
+        if (p == null || p.isBlank()) return "/v1/agent/event";
+        return p.startsWith("/") ? p : "/" + p;
+    }
+
     /** 횟수형 임계치 초과 알림 */
     public static void sendCountAlert(String userId, EventType type, int count, int windowSec, String sample) {
         String line = "[ALERT] " +
@@ -95,11 +102,13 @@ public class AlertSender {
         HttpLogger.sendLog(line);
     }
     /** 포렌식 이벤트 전송 (DB 저장 없이 서버에서 실시간 검증만) */
+    /** encPayload만 암호문, 바깥 JSON은 평문으로 전송(encrypt=false) */
     public static void sendForensicEvent(ForensicPayload p) {
         String encPayloadB64 = PayloadManager.encryptPayload(p);       // AES-Base64
         String token = PayloadManager.makeVisibleToken(p, 12);         // HMAC-hex 12
 
         Map<String, Object> body = new LinkedHashMap<>();
+        body.put("type", "forensic");
         body.put("token", token);
         body.put("encPayload", encPayloadB64);
         body.put("agentTs", p.ts());
@@ -107,7 +116,7 @@ public class AlertSender {
 
         String json = GSON.toJson(body);
         // /event 엔드포인트로 JSON 전송 (본문은 CryptoUtil로 추가 암호화)
-        HttpLogger.sendJson("/event", json, true);
+        HttpLogger.sendJson(resolveEventPath(), json, /*encrypt*/ false);
     }
 
     private static String safe(String s) { return (s == null) ? "-" : s; }
