@@ -29,6 +29,7 @@ public class StatusServer {
     private static int runningPort = -1;
     public static int getRunningPort() { return runningPort; }
 
+    private static float opacity = 0.4f;
 
     private static volatile Runnable flushCallback;
     public static void registerFlushCallback(Runnable cb) { flushCallback = cb; }
@@ -96,12 +97,12 @@ public class StatusServer {
         if (on) {
             boolean needRefreshText = (lastOverlayText == null || !text.equals(lastOverlayText));
             if (!overlayOn) {
-                WatermarkOverlay.showOverlay(text, 0.01f);
+                WatermarkOverlay.showOverlay(text, opacity);
                 overlayOn = true;
                 System.out.println("[StatusServer] watermark(final)=true");
             } else if (needRefreshText) {
                 // 상태는 그대로(on)이지만 사용자 바뀜 → 텍스트만 새로 그림
-                WatermarkOverlay.showOverlay(text, 0.01f); // updateOverlayText(...)가 있으면 그걸로 교체
+                WatermarkOverlay.showOverlay(text, opacity); // updateOverlayText(...)가 있으면 그걸로 교체
                 System.out.println("[StatusServer] watermark(text-refresh) uid=" + PayloadManager.boundUserId());
             }
             lastOverlayText = text;
@@ -138,7 +139,7 @@ public class StatusServer {
               // 상태는 on 유지 중인데 uid가 바뀌었으면 텍스트만 갱신
               String text = "AIRoom " + PayloadManager.boundUserId();
               if (!text.equals(lastOverlayText)) {
-                WatermarkOverlay.showOverlay(text, 0.01f);
+                WatermarkOverlay.showOverlay(text, opacity);
                 lastOverlayText = text;
                 // 로그 과다 방지: 상태변화 아닐 땐 콘솔 찍지 않음
               }
