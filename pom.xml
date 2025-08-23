@@ -133,7 +133,7 @@
                             <!-- 앱 메타 -->
                             <name>SecureAgent</name>
                             <vendor>AIROOM</vendor>
-                            <appVersion>0.9.6</appVersion>
+                            <appVersion>0.9.7</appVersion>
                             <type>EXE</type>
                             <winUpgradeUuid>c6e987ca-0b39-44a4-b742-7b7380b1ce56</winUpgradeUuid>
                             <!--Windows 업그레이드 식별자는 UUID/GUID 형식 8-4-4-4-12 하이픈 포함, 32자리 16진수 -->
@@ -151,8 +151,8 @@
                                 <javaOption>-Xmx512m</javaOption>
                                 <javaOption>-Daidt.spool.encrypt=true</javaOption>
                                 <javaOption>-Dsecureagent.test=true</javaOption>
-                                <javaOption>-Dsecureagent.smoke=false</javaOption>
-                                <javaOption>-Dsecureagent.forensic=false</javaOption>
+                                <javaOption>-Dsecureagent.smoke=true</javaOption>
+                                <javaOption>-Dsecureagent.forensic=true</javaOption>
                                 <javaOption>-Dsecureagent.devlog=true</javaOption>
 
                                 <!-- 서버 목적지/경로 주입 (property가 env보다 우선) -->
