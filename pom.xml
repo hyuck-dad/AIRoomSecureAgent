@@ -154,6 +154,11 @@
                                 <javaOption>-Dsecureagent.smoke=false</javaOption>
                                 <javaOption>-Dsecureagent.forensic=false</javaOption>
                                 <javaOption>-Dsecureagent.devlog=true</javaOption>
+
+                                <!-- 서버 목적지/경로 주입 (property가 env보다 우선) -->
+                                <javaOption>-Daidt.baseUrl=http://43.200.2.244:8080</javaOption>
+                                <javaOption>-Daidt.logPath=/api/agent/log</javaOption>
+                                <javaOption>-Daidt.eventPath=/api/agent/event</javaOption>
                             </javaOptions>
                         </configuration>
                     </execution>

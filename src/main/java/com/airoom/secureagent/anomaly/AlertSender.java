@@ -70,10 +70,10 @@ public class AlertSender {
 
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
-    // AIDT_EVENT_PATH=/v1/agent/event  (기본값)
+    // AIDT_EVENT_PATH=/api/agent/event  (기본값)
     private static String resolveEventPath() {
         String p = System.getProperty("aidt.eventPath", System.getenv("AIDT_EVENT_PATH"));
-        if (p == null || p.isBlank()) return "/v1/agent/event";
+        if (p == null || p.isBlank()) return "/api/agent/event";
         return p.startsWith("/") ? p : "/" + p;
     }
 
