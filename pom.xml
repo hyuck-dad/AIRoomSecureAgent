@@ -1,8 +1,13 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.airoom.secureagent</groupId>
     <artifactId>AIRoomSecureAgent</artifactId>
-    <version>1.0-SNAPSHOT</version>
+
+    <!-- 앱/페이로드에 들어갈 실제 버전 -->
+    <version>0.9.8</version>
+
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
@@ -76,6 +81,11 @@
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.airoom.secureagent.SecureAgentMain</mainClass>
+                                    <!-- Manifest에 버전/제목 주입 -->
+                                    <manifestEntries>
+                                        <Implementation-Title>${project.artifactId}</Implementation-Title>
+                                        <Implementation-Version>${project.version}</Implementation-Version>
+                                    </manifestEntries>
                                 </transformer>
                             </transformers>
                         </configuration>
@@ -133,7 +143,7 @@
                             <!-- 앱 메타 -->
                             <name>SecureAgent</name>
                             <vendor>AIROOM</vendor>
-                            <appVersion>0.9.8</appVersion>
+                            <appVersion>${project.version}</appVersion>
                             <type>EXE</type>
                             <winUpgradeUuid>c6e987ca-0b39-44a4-b742-7b7380b1ce56</winUpgradeUuid>
                             <!--Windows 업그레이드 식별자는 UUID/GUID 형식 8-4-4-4-12 하이픈 포함, 32자리 16진수 -->
