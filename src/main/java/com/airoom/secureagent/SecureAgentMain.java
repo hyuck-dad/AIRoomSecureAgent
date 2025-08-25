@@ -60,8 +60,12 @@ public class SecureAgentMain {
     private static final int DEBOUNCE_MS=1200;
 
     public static void main(String[] args) {
-//        String imgDecode = ImageStegoDecoder.decode("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\22222.jpg");
-//        System.out.println(imgDecode);
+//        String imgDecode1 = ImageStegoDecoder.decode("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\test001.png");
+//        System.out.println(imgDecode1);
+//        String imgDecode2 = ImageStegoDecoder.decode("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\test002.png");
+//        System.out.println(imgDecode2);
+//        String imgDecode3 = ImageStegoDecoder.decode("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\test003.png");
+//        System.out.println(imgDecode3);
 //        String pdfDecode = PdfStegoDecoder.extract("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\111.pdf");
 //        System.out.println(pdfDecode);
 

@@ -29,7 +29,7 @@ public class StatusServer {
     private static int runningPort = -1;
     public static int getRunningPort() { return runningPort; }
 
-    private static float opacity = 0.4f;
+    private static float opacity = 0.004f;
 
     private static volatile Runnable flushCallback;
     public static void registerFlushCallback(Runnable cb) { flushCallback = cb; }
