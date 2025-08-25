@@ -1,5 +1,6 @@
 package com.airoom.secureagent.device;
 
+import java.util.List;
 import java.util.Optional;
 // 오케스트레이터(수집→정규화→로그 출력)
 // 콘솔 검증은 SecureAgentMain에서 DeviceFingerprintCollector.collect()를 호출해
@@ -44,6 +45,23 @@ public class DeviceFingerprintCollector {
         System.out.println("Composite Device ID : " + deviceId);
         System.out.println("=========================");
     }
+    public static String toPrettyString(DeviceFingerprint fp) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== Device Fingerprint ===\n");
+        sb.append("MachineGuid   : ").append(nv(fp.machineGuid())).append('\n');
+        sb.append("Primary MAC   : ").append(nv(fp.primaryMac())).append('\n');
+        sb.append("All MACs      : ").append(fp.macList() == null ? "-" : fp.macList()).append('\n');
+        sb.append("BIOS Serial   : ").append(nv(fp.biosSerial())).append('\n');
+        sb.append("Board Serial  : ").append(nv(fp.baseboardSerial())).append('\n');
+        sb.append("Disk Serial   : ").append(nv(fp.diskSerial())).append('\n');
+        sb.append("CPU ID        : ").append(nv(fp.cpuId())).append('\n');
+        sb.append("MAC Quality   : ").append(fp.macQuality() == null ? "NONE" : fp.macQuality()).append('\n');
+        sb.append("VM Suspect    : ").append(fp.vmSuspect() ? "YES" : "NO").append('\n');
 
+        String deviceId = DeviceIdGenerator.compute(fp);
+        sb.append("Composite Device ID : ").append(deviceId).append('\n');
+        sb.append("=========================");
+        return sb.toString();
+    }
     private static String nv(String s) { return (s == null || s.isBlank()) ? "-" : s; }
 }
