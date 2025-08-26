@@ -175,7 +175,7 @@
                             <!-- Windows 옵션 -->
                             <winShortcut>true</winShortcut>         <!-- 바탕화면 바로가기 생성 -->
                             <winMenu>false</winMenu>                 <!-- 시작 메뉴 등록 -->
-                            <winConsole>true</winConsole>            <!-- 개발 확인용: 콘솔창 표시 -->
+                            <winConsole>false</winConsole>            <!-- 개발 확인용: 콘솔창 표시 -->
                             <winPerUserInstall>true</winPerUserInstall> <!-- 관리자 권한 없이 사용자 단위 설치 -->
                             <icon>${project.basedir}/src/main/resources/app/yellowicon.ico</icon>
 
