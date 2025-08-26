@@ -183,6 +183,9 @@
                             <javaOptions>
                                 <javaOption>-Xms128m</javaOption>
                                 <javaOption>-Xmx512m</javaOption>
+                                <!-- 트레이/알림 UI 위해 필수 -->
+                                <javaOption>-Djava.awt.headless=false</javaOption>
+
                                 <javaOption>-Daidt.spool.encrypt=true</javaOption>
                                 <javaOption>-Dsecureagent.test=true</javaOption>
                                 <javaOption>-Dsecureagent.smoke=true</javaOption>
