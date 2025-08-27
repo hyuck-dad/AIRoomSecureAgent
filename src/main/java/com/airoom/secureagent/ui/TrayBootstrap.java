@@ -290,11 +290,11 @@ public final class TrayBootstrap {
         c.gridx=0; c.gridy=0; c.insets=new Insets(8,12,4,12); c.anchor=GridBagConstraints.WEST; c.fill=GridBagConstraints.HORIZONTAL; c.weightx=1;
 
         // 라벨 + 숫자 입력(스피너, 0.0~100.0, 0.1 step)
-        JLabel l1 = new JLabel("화면 오버레이(실시간) %");
+        JLabel l1 = new JLabel("화면 오버레이 %");
         JSpinner sp1 = new JSpinner(new SpinnerNumberModel(overlayPct, 0.0, 100.0, 0.1));
         ((JSpinner.NumberEditor) sp1.getEditor()).getFormat().setMaximumFractionDigits(2);
 
-        JLabel l2 = new JLabel("파일 워터마크(삽입) %");
+        JLabel l2 = new JLabel("파일 워터마크 %");
         JSpinner sp2 = new JSpinner(new SpinnerNumberModel(embedPct, 0.0, 100.0, 0.1));
         ((JSpinner.NumberEditor) sp2.getEditor()).getFormat().setMaximumFractionDigits(2);
 
