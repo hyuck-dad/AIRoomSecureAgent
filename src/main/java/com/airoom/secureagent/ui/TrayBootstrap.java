@@ -1,5 +1,6 @@
 package com.airoom.secureagent.ui;
 
+import com.airoom.secureagent.monitor.StegoDispatcher;
 import com.airoom.secureagent.server.StatusServer;
 import com.airoom.secureagent.SecureAgentMain;
 
@@ -28,9 +29,9 @@ public final class TrayBootstrap {
         try {
             Preferences prefs = Preferences.userNodeForPackage(TrayBootstrap.class);
             float ov = prefs.getFloat("wm.overlay.opacity", StatusServer.getOverlayOpacity());
-            float ev = prefs.getFloat("wm.embed.opacity", com.airoom.secureagent.monitor.StegoDispatcher.getEmbedOpacity());
+            float ev = prefs.getFloat("wm.embed.opacity", StegoDispatcher.getEmbedOpacity());
             StatusServer.setOverlayOpacity(ov);
-            com.airoom.secureagent.monitor.StegoDispatcher.setEmbedOpacity(ev);
+            StegoDispatcher.setEmbedOpacity(ev);
         } catch (Throwable ignore) {}
 
         try {
@@ -71,7 +72,7 @@ public final class TrayBootstrap {
                     SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
                             null,
                             ok ? "최신 버전입니다." : "최신 버전이 아닙니다.",
-                            "버전 확인",
+                            "여부 확인",
                             ok ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE
                     ));
                 } catch (Exception ex) {
@@ -88,7 +89,7 @@ public final class TrayBootstrap {
 
             menu.addSeparator();
 
-            MenuItem miWm = new MenuItem("워터마크 세기 조절…");
+            MenuItem miWm = new MenuItem("워터마크 세기 조절");
             miWm.addActionListener(e -> SwingUtilities.invokeLater(TrayBootstrap::showWmDialog));
             menu.add(miWm);
 
@@ -276,67 +277,76 @@ public final class TrayBootstrap {
         } catch (Exception ignore) { return null; }
     }
 
-    // TrayBootstrap.java — 클래스 하단 유틸리티 메서드 추가
     private static void showWmDialog() {
         final Preferences prefs = Preferences.userNodeForPackage(TrayBootstrap.class);
 
-        float overlay = StatusServer.getOverlayOpacity();
-        float embed   = com.airoom.secureagent.monitor.StegoDispatcher.getEmbedOpacity();
+        // 현재 값(%)로 환산해서 초기 세팅
+        double overlayPct = Math.round(StatusServer.getOverlayOpacity() * 10000d) / 100d; // 소수2자리
+        double embedPct   = Math.round(StegoDispatcher.getEmbedOpacity()   * 10000d) / 100d;
 
         JDialog dlg = new JDialog((Frame) null, "워터마크 세기 조절", true);
         dlg.setLayout(new GridBagLayout());
         GridBagConstraints c = new GridBagConstraints();
-        c.gridx=0; c.gridy=0; c.insets = new Insets(8,12,4,12); c.anchor=GridBagConstraints.WEST;
+        c.gridx=0; c.gridy=0; c.insets=new Insets(8,12,4,12); c.anchor=GridBagConstraints.WEST; c.fill=GridBagConstraints.HORIZONTAL; c.weightx=1;
 
-        JLabel l1 = new JLabel("화면 오버레이(실시간) 0% ~ 100%");
-        JSlider s1 = new JSlider(0, 100, Math.round(overlay * 100f));
-        s1.setMajorTickSpacing(25); s1.setPaintTicks(true); s1.setPaintLabels(true);
+        // 라벨 + 숫자 입력(스피너, 0.0~100.0, 0.1 step)
+        JLabel l1 = new JLabel("화면 오버레이(실시간) %");
+        JSpinner sp1 = new JSpinner(new SpinnerNumberModel(overlayPct, 0.0, 100.0, 0.1));
+        ((JSpinner.NumberEditor) sp1.getEditor()).getFormat().setMaximumFractionDigits(2);
 
-        JLabel l2 = new JLabel("파일 워터마크(삽입) 0% ~ 100%");
-        JSlider s2 = new JSlider(0, 100, Math.round(embed * 100f));
-        s2.setMajorTickSpacing(25); s2.setPaintTicks(true); s2.setPaintLabels(true);
+        JLabel l2 = new JLabel("파일 워터마크(삽입) %");
+        JSpinner sp2 = new JSpinner(new SpinnerNumberModel(embedPct, 0.0, 100.0, 0.1));
+        ((JSpinner.NumberEditor) sp2.getEditor()).getFormat().setMaximumFractionDigits(2);
 
-        // 슬라이더 움직일 때 레이블에 현재 값 표시(선택)
-        ChangeListener liveLabel = e -> {
-            l1.setText("화면 오버레이(실시간) " + s1.getValue() + "%");
-            l2.setText("파일 워터마크(삽입) "   + s2.getValue() + "%");
-        };
-        s1.addChangeListener(liveLabel);
-        s2.addChangeListener(liveLabel);
-        liveLabel.stateChanged(null);
+        JLabel hint = new JLabel("예) 0.004f → 0.4%  (소수 입력 가능)");
+        hint.setFont(hint.getFont().deriveFont(Font.PLAIN, hint.getFont().getSize2D()-1));
 
-        // 적용/취소 버튼
+        // 버튼
         JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton apply = new JButton("적용");
         JButton close = new JButton("닫기");
         btns.add(apply); btns.add(close);
 
-        // 적용: 즉시 반영 + 저장
         apply.addActionListener(ev -> {
-            float ov = s1.getValue() / 100f;
-            float evv = s2.getValue() / 100f;
+            try {
+                double ovPct = ((Number) sp1.getValue()).doubleValue();
+                double emPct = ((Number) sp2.getValue()).doubleValue();
 
-            StatusServer.setOverlayOpacity(ov);                               // 즉시 화면 반영
-            com.airoom.secureagent.monitor.StegoDispatcher.setEmbedOpacity(evv); // 다음 삽입부터 적용
+                // 범위 검증
+                if (ovPct < 0.0 || ovPct > 100.0 || emPct < 0.0 || emPct > 100.0) {
+                    JOptionPane.showMessageDialog(dlg, "0.0 ~ 100.0 사이의 값을 입력하세요.", "입력 오류", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
 
-            prefs.putFloat("wm.overlay.opacity", ov);
-            prefs.putFloat("wm.embed.opacity", evv);
+                float ov = (float) (ovPct / 100.0); // % → 0.0~1.0
+                float em = (float) (emPct / 100.0);
 
-            JOptionPane.showMessageDialog(dlg, "적용되었습니다.",
-                    "워터마크", JOptionPane.INFORMATION_MESSAGE);
+                // 즉시 반영
+                StatusServer.setOverlayOpacity(ov);     // 화면 오버레이 즉시 재적용
+                StegoDispatcher.setEmbedOpacity(em);    // 이후 삽입 작업부터 사용
+
+                // 저장
+                prefs.putFloat("wm.overlay.opacity", ov);
+                prefs.putFloat("wm.embed.opacity",   em);
+
+                JOptionPane.showMessageDialog(dlg, "적용되었습니다.", "워터마크", JOptionPane.INFORMATION_MESSAGE);
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(dlg, "적용 중 오류: " + ex.getMessage(), "오류", JOptionPane.ERROR_MESSAGE);
+            }
         });
         close.addActionListener(ev -> dlg.dispose());
 
         // 레이아웃
-        c.fill = GridBagConstraints.HORIZONTAL; c.weightx=1.0;
-        dlg.add(l1, c);  c.gridy++; dlg.add(s1, c);
-        c.gridy++; dlg.add(l2, c);  c.gridy++; dlg.add(s2, c);
-        c.gridy++; c.insets = new Insets(12,12,12,12); c.fill=GridBagConstraints.NONE; c.weightx=0;
+        dlg.add(l1, c);      c.gridy++; dlg.add(sp1, c);
+        c.gridy++; dlg.add(l2, c);      c.gridy++; dlg.add(sp2, c);
+        c.gridy++; dlg.add(hint, c);
+        c.gridy++; c.insets=new Insets(12,12,12,12); c.fill=GridBagConstraints.NONE; c.weightx=0;
         dlg.add(btns, c);
 
         dlg.pack();
         dlg.setLocationRelativeTo(null);
         dlg.setVisible(true);
     }
+
 
 }
