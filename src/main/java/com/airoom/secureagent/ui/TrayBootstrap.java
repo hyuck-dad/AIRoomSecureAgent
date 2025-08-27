@@ -120,7 +120,7 @@ public final class TrayBootstrap {
 
             // 아이콘 로드 (PNG 우선, 없으면 ICO 폴백)
             Image image = loadIconPreferPng("/app/yellowicon.png", "/app/yellowicon.ico");
-            TRAY = new TrayIcon(image, "SecureAgent " + version + "  (" + shaShort + ")", menu);
+            TRAY = new TrayIcon(image, "보안 지킴이 " + version + "  (" + shaShort + ")", menu);
             TRAY.setImageAutoSize(true);
             TRAY.addActionListener(showStatusAction());
 
@@ -222,7 +222,7 @@ public final class TrayBootstrap {
                             (port != null ? port : "-"));
 
                     SwingUtilities.invokeLater(() ->
-                            JOptionPane.showMessageDialog(null, msg, "SecureAgent 상태", JOptionPane.INFORMATION_MESSAGE)
+                            JOptionPane.showMessageDialog(null, msg, "보안 지킴이 상태", JOptionPane.INFORMATION_MESSAGE)
                     );
                 }
             } catch (Exception ex) {
@@ -233,9 +233,9 @@ public final class TrayBootstrap {
 
 
     // --- 알림/툴팁 ---
-    public static void notifyInfo(String msg) { if (READY.get()) TRAY.displayMessage("SecureAgent", msg, TrayIcon.MessageType.INFO); }
-    public static void notifyWarn(String msg) { if (READY.get()) TRAY.displayMessage("SecureAgent", msg, TrayIcon.MessageType.WARNING); }
-    public static void notifyError(String msg){ if (READY.get()) TRAY.displayMessage("SecureAgent", msg, TrayIcon.MessageType.ERROR); }
+    public static void notifyInfo(String msg) { if (READY.get()) TRAY.displayMessage("보안 지킴이", msg, TrayIcon.MessageType.INFO); }
+    public static void notifyWarn(String msg) { if (READY.get()) TRAY.displayMessage("보안 지킴이", msg, TrayIcon.MessageType.WARNING); }
+    public static void notifyError(String msg){ if (READY.get()) TRAY.displayMessage("보안 지킴이", msg, TrayIcon.MessageType.ERROR); }
     public static void updateTooltip(String tooltip) { if (READY.get() && tooltip != null) TRAY.setToolTip(tooltip); }
 
     public static void remove() {
