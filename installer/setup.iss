@@ -1,6 +1,6 @@
-﻿#define AppNameKor     "보안 지킴이"
+﻿#define AppNameKor     "보안지킴이"
 #define AppVersion     GetEnv("APP_VERSION")
-#define AppImageDir    GetEnv("APP_IMAGE_DIR")     ; ...\app-image\보안 지킴이
+#define AppImageDir    GetEnv("APP_IMAGE_DIR")     ; ...\app-image\보안지킴이
 #define OutputDir      GetEnv("OUTPUT_DIR")
 #define AppIcon        GetEnv("APP_ICON")
 
@@ -11,7 +11,7 @@ AppVersion={#AppVersion}
 AppPublisher=AIROOM
 DefaultDirName={localappdata}\Programs\{#AppNameKor}
 OutputDir={#OutputDir}
-OutputBaseFilename={#AppNameKor}-{#AppVersion} 설치
+OutputBaseFilename={#AppNameKor}-{#AppVersion}
 AppMutex=AIROOM.SecureAgent
 ArchitecturesInstallIn64BitMode=x64
 DisableDirPage=yes
