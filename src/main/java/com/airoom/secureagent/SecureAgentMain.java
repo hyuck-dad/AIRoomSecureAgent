@@ -102,7 +102,7 @@ public class SecureAgentMain {
 
             // ---- 트레이 아이콘 초기화 ----
             String shaShort = (sha.length() >= 8 ? sha.substring(0, 8) : sha);
-            TrayBootstrap.init(ver, shaShort);
+            TrayBootstrap.init(ver, shaShort, sha);
 
             // ---- 상태 서버 시작 & 툴팁 반영 ----
             StatusServer.configure(ver, sha);
