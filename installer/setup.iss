@@ -8,7 +8,6 @@
 ; 실행 중인 앱 닫기 / 닫은 앱 재시작 / Restart Manager 사용
 CloseApplications=yes
 RestartApplications=yes
-RestartManagerSupport=all
 ; UAC 없는 경로에 설치하므로 관리자 권한 불필요
 PrivilegesRequired=lowest
 AppId={{c6e987ca-0b39-44a4-b742-7b7380b1ce56}}
@@ -28,7 +27,7 @@ SetupIconFile={#AppIcon}
 ; 추가: 제어판(프로그램 추가/제거) 아이콘
 UninstallDisplayIcon={app}\{#AppNameKor}.exe,0
 UsePreviousAppDir=no
-CloseApplicationsFilter=보안지킴이.exe;보안 지킴이.exe;SecureAgent.exe
+CloseApplicationsFilter=보안지킴이.exe,보안 지킴이.exe,SecureAgent.exe
 VersionInfoVersion={#AppVersion}.0
 
 [Languages]
