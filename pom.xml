@@ -6,7 +6,7 @@
     <artifactId>AIRoomSecureAgent</artifactId>
 
     <!-- 앱/페이로드에 들어갈 실제 버전 -->
-    <version>1.0.1</version>
+    <version>1.0.3</version>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>

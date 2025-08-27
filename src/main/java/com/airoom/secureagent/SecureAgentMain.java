@@ -115,7 +115,7 @@ public class SecureAgentMain {
                     TrayBootstrap.notifyInfo("브라우저 보호 활성");
                     TrayBootstrap.updateTooltip("보호: 활성");
                 } else {
-                    TrayBootstrap.notifyWarn("브라우저 보호 비활성");
+//                    TrayBootstrap.notifyWarn("브라우저 보호 비활성");
                     TrayBootstrap.updateTooltip("보호: 비활성");
                 }
             });
