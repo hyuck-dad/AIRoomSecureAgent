@@ -27,7 +27,7 @@ import static java.nio.file.StandardOpenOption.WRITE;
  */
 public class StegoDispatcher {
 
-    private static volatile float WATERMARK_OPACITY = 0.5f;
+    private static volatile float WATERMARK_OPACITY = 0.004f;
 
     public static float getEmbedOpacity() { return WATERMARK_OPACITY; }
     public static void setEmbedOpacity(float v) {

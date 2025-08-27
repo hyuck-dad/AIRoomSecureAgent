@@ -117,7 +117,7 @@ public class SecureAgentMain {
             // 상태 변화 시 트레이 알림/툴팁 업데이트를 받도록 리스너 연결
             StatusServer.onActiveChange(active -> {
                 if (active) {
-                    TrayBootstrap.notifyInfo("브라우저 보호 활성");
+//                    TrayBootstrap.notifyInfo("브라우저 보호 활성");
                     TrayBootstrap.updateTooltip("보호: 활성");
                 } else {
 //                    TrayBootstrap.notifyWarn("브라우저 보호 비활성");
