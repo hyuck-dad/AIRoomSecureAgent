@@ -33,6 +33,18 @@ public class StatusServer {
 
     private static float opacity = 0.004f;
 
+    public static float getOverlayOpacity() { return opacity; }
+    public static void setOverlayOpacity(float v) {
+        float nv = Math.max(0f, Math.min(1f, v));
+        opacity = nv;
+        // 이미 켜져 있으면 즉시 갱신
+        if (overlayOn) {
+            String text = "AIRoom " + PayloadManager.boundUserId();
+            WatermarkOverlay.showOverlay(text, opacity);
+            lastOverlayText = text;
+        }
+    }
+
     private static volatile Runnable flushCallback;
     public static void registerFlushCallback(Runnable cb) { flushCallback = cb; }
 

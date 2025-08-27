@@ -27,7 +27,12 @@ import static java.nio.file.StandardOpenOption.WRITE;
  */
 public class StegoDispatcher {
 
-    private static final float WATERMARK_OPACITY = 0.5f;
+    private static volatile float WATERMARK_OPACITY = 0.5f;
+
+    public static float getEmbedOpacity() { return WATERMARK_OPACITY; }
+    public static void setEmbedOpacity(float v) {
+        WATERMARK_OPACITY = Math.max(0f, Math.min(1f, v));
+    }
 
     /** 최근 N초 안에 처리한 파일을 기억해 중복 호출 차단 (30 s 로 확대) */
     private static final Cache<String, Boolean> recent = Caffeine.newBuilder()

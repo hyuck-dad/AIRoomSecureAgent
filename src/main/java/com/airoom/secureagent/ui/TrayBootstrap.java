@@ -5,6 +5,7 @@ import com.airoom.secureagent.SecureAgentMain;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
+import javax.swing.event.ChangeListener;
 import java.awt.*;
 import java.awt.event.ActionListener;
 import java.awt.image.BufferedImage;
@@ -14,6 +15,7 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.prefs.Preferences;
 
 public final class TrayBootstrap {
     private static TrayIcon TRAY;
@@ -24,6 +26,14 @@ public final class TrayBootstrap {
 
     public static boolean init(String version, String shaShort, String shaFull) {
         try {
+            Preferences prefs = Preferences.userNodeForPackage(TrayBootstrap.class);
+            float ov = prefs.getFloat("wm.overlay.opacity", StatusServer.getOverlayOpacity());
+            float ev = prefs.getFloat("wm.embed.opacity", com.airoom.secureagent.monitor.StegoDispatcher.getEmbedOpacity());
+            StatusServer.setOverlayOpacity(ov);
+            com.airoom.secureagent.monitor.StegoDispatcher.setEmbedOpacity(ev);
+        } catch (Throwable ignore) {}
+
+        try {
             if (!SystemTray.isSupported()) return false;
             System.setProperty("java.awt.headless", "false");
 
@@ -33,24 +43,6 @@ public final class TrayBootstrap {
             MenuItem miStatus = new MenuItem("상태 확인");
             miStatus.addActionListener(showStatusAction());
             menu.add(miStatus);
-
-            menu.addSeparator();
-
-            // 포렌식 페이지
-            MenuItem miPortal = new MenuItem("디지털 포렌식 분석기 열기");
-            miPortal.addActionListener(e -> {
-                try {
-                    if (Desktop.isDesktopSupported() &&
-                            Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                        Desktop.getDesktop().browse(new URI(joinUrl(FRONT_URL, "forensic")));
-                    } else {
-                        notifyWarn("이 환경에서는 브라우저 열기를 지원하지 않습니다.");
-                    }
-                } catch (Exception ex) {
-                    notifyError("페이지 열기 실패: " + ex.getMessage());
-                }
-            });
-            menu.add(miPortal);
 
             // 최신버전 여부 확인(내부 다이얼로그)
             MenuItem miBackend = new MenuItem("최신 버전 여부 확인");
@@ -96,6 +88,27 @@ public final class TrayBootstrap {
 
             menu.addSeparator();
 
+            MenuItem miWm = new MenuItem("워터마크 세기 조절…");
+            miWm.addActionListener(e -> SwingUtilities.invokeLater(TrayBootstrap::showWmDialog));
+            menu.add(miWm);
+
+            // 포렌식 페이지
+            MenuItem miPortal = new MenuItem("디지털 포렌식 분석기 열기");
+            miPortal.addActionListener(e -> {
+                try {
+                    if (Desktop.isDesktopSupported() &&
+                            Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                        Desktop.getDesktop().browse(new URI(joinUrl(FRONT_URL, "forensic")));
+                    } else {
+                        notifyWarn("이 환경에서는 브라우저 열기를 지원하지 않습니다.");
+                    }
+                } catch (Exception ex) {
+                    notifyError("페이지 열기 실패: " + ex.getMessage());
+                }
+            });
+            menu.add(miPortal);
+
+            menu.addSeparator();
             // 종료
             MenuItem miQuit = new MenuItem("종료");
             miQuit.addActionListener(e -> {
@@ -261,6 +274,69 @@ public final class TrayBootstrap {
             if (i == j) return null;
             return Integer.parseInt(json.substring(i, j));
         } catch (Exception ignore) { return null; }
+    }
+
+    // TrayBootstrap.java — 클래스 하단 유틸리티 메서드 추가
+    private static void showWmDialog() {
+        final Preferences prefs = Preferences.userNodeForPackage(TrayBootstrap.class);
+
+        float overlay = StatusServer.getOverlayOpacity();
+        float embed   = com.airoom.secureagent.monitor.StegoDispatcher.getEmbedOpacity();
+
+        JDialog dlg = new JDialog((Frame) null, "워터마크 세기 조절", true);
+        dlg.setLayout(new GridBagLayout());
+        GridBagConstraints c = new GridBagConstraints();
+        c.gridx=0; c.gridy=0; c.insets = new Insets(8,12,4,12); c.anchor=GridBagConstraints.WEST;
+
+        JLabel l1 = new JLabel("화면 오버레이(실시간) 0% ~ 100%");
+        JSlider s1 = new JSlider(0, 100, Math.round(overlay * 100f));
+        s1.setMajorTickSpacing(25); s1.setPaintTicks(true); s1.setPaintLabels(true);
+
+        JLabel l2 = new JLabel("파일 워터마크(삽입) 0% ~ 100%");
+        JSlider s2 = new JSlider(0, 100, Math.round(embed * 100f));
+        s2.setMajorTickSpacing(25); s2.setPaintTicks(true); s2.setPaintLabels(true);
+
+        // 슬라이더 움직일 때 레이블에 현재 값 표시(선택)
+        ChangeListener liveLabel = e -> {
+            l1.setText("화면 오버레이(실시간) " + s1.getValue() + "%");
+            l2.setText("파일 워터마크(삽입) "   + s2.getValue() + "%");
+        };
+        s1.addChangeListener(liveLabel);
+        s2.addChangeListener(liveLabel);
+        liveLabel.stateChanged(null);
+
+        // 적용/취소 버튼
+        JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton apply = new JButton("적용");
+        JButton close = new JButton("닫기");
+        btns.add(apply); btns.add(close);
+
+        // 적용: 즉시 반영 + 저장
+        apply.addActionListener(ev -> {
+            float ov = s1.getValue() / 100f;
+            float evv = s2.getValue() / 100f;
+
+            StatusServer.setOverlayOpacity(ov);                               // 즉시 화면 반영
+            com.airoom.secureagent.monitor.StegoDispatcher.setEmbedOpacity(evv); // 다음 삽입부터 적용
+
+            prefs.putFloat("wm.overlay.opacity", ov);
+            prefs.putFloat("wm.embed.opacity", evv);
+
+            JOptionPane.showMessageDialog(dlg, "적용되었습니다.",
+                    "워터마크", JOptionPane.INFORMATION_MESSAGE);
+        });
+        close.addActionListener(ev -> dlg.dispose());
+
+        // 레이아웃
+        c.fill = GridBagConstraints.HORIZONTAL; c.weightx=1.0;
+        dlg.add(l1, c);  c.gridy++; dlg.add(s1, c);
+        c.gridy++; dlg.add(l2, c);  c.gridy++; dlg.add(s2, c);
+        c.gridy++; c.insets = new Insets(12,12,12,12); c.fill=GridBagConstraints.NONE; c.weightx=0;
+        dlg.add(btns, c);
+
+        dlg.pack();
+        dlg.setLocationRelativeTo(null);
+        dlg.setVisible(true);
     }
 
 }
