@@ -1,41 +1,39 @@
-﻿; installer/setup.iss
-; ← 파일 인코딩 꼭 UTF-8 with BOM
-
-; 중괄호 이스케이프: {{ ... }}
-#define AppId        "{{c6e987ca-0b39-44a4-b742-7b7380b1ce56}}"
-#define AppNameKor   "보안 지킴이"
-#define AppPublisher "AIROOM"
-#define AppVersion   GetEnv("APP_VERSION")
-#define OutputDir    GetEnv("OUTPUT_DIR")
-#define AppImageDir  GetEnv("APP_IMAGE_DIR")
-#define IconIco      GetEnv("APP_ICON")
+﻿#define AppNameKor     "보안 지킴이"
+#define AppVersion     GetEnv("APP_VERSION")
+#define AppImageDir    GetEnv("APP_IMAGE_DIR")     ; ...\app-image\보안 지킴이
+#define OutputDir      GetEnv("OUTPUT_DIR")
+#define AppIcon        GetEnv("APP_ICON")
 
 [Setup]
-AppId={#AppId}
+AppId={{c6e987ca-0b39-44a4-b742-7b7380b1ce56}}
 AppName={#AppNameKor}
 AppVersion={#AppVersion}
-AppPublisher={#AppPublisher}
-DefaultDirName={autopf}\{#AppNameKor}
-; 시작 메뉴 완전 비활성화(마법사 페이지도 숨김)
-DisableProgramGroupPage=yes
+AppPublisher=AIROOM
+DefaultDirName={localappdata}\Programs\{#AppNameKor}
 OutputDir={#OutputDir}
 OutputBaseFilename={#AppNameKor}-{#AppVersion} 설치
-SetupIconFile={#IconIco}
-UninstallDisplayIcon={app}\SecureAgent\SecureAgent.exe
+AppMutex=AIROOM.SecureAgent
 ArchitecturesInstallIn64BitMode=x64
-Compression=lzma2
-SolidCompression=yes
-WizardStyle=modern
+DisableDirPage=yes
+DisableProgramGroupPage=yes
+UsePreviousLanguage=no
+; 시작 메뉴는 생성하지 않음
+; 추가: 인스톨러(EXE) 자체 아이콘
+SetupIconFile={#AppIcon}
+; 추가: 제어판(프로그램 추가/제거) 아이콘
+UninstallDisplayIcon={app}\{#AppNameKor}.exe,0
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
 [Files]
-Source: "{#AppImageDir}\*"; DestDir: "{app}\SecureAgent"; Flags: recursesubdirs ignoreversion
+; APP_IMAGE 전체를 설치 폴더로 복사
+Source: "{#AppImageDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-; 바탕화면 바로가기만 생성 (시작 메뉴 없음)
-Name: "{autodesktop}\보안 지킴이"; Filename: "{app}\SecureAgent\SecureAgent.exe"; WorkingDir: "{app}\SecureAgent"
+; 바탕화면 아이콘만 (시작 메뉴 X)
+Name: "{commondesktop}\{#AppNameKor}"; Filename: "{app}\{#AppNameKor}.exe"; IconFilename: "{#AppIcon}"
 
 [Run]
-Filename: "{app}\SecureAgent\SecureAgent.exe"; Description: "보안 지킴이 실행"; Flags: nowait postinstall skipifsilent
+; 설치 완료 후 자동 실행(선택)
+Filename: "{app}\{#AppNameKor}.exe"; Description: "{cm:LaunchProgram, {#AppNameKor}}"; Flags: nowait postinstall skipifsilent

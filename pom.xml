@@ -6,7 +6,7 @@
     <artifactId>AIRoomSecureAgent</artifactId>
 
     <!-- 앱/페이로드에 들어갈 실제 버전 -->
-    <version>1.9.1</version>
+    <version>1.9.3</version>
 
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
@@ -163,7 +163,7 @@
                             <destination>${project.build.directory}/app-image</destination>
 
                             <type>APP_IMAGE</type>
-                            <name>${app.name.ascii}</name>
+                            <name>${app.name.kor}</name>
                             <mainJar>${project.artifactId}-${project.version}-shaded.jar</mainJar>
                             <mainClass>com.airoom.secureagent.SecureAgentMain</mainClass>
 
@@ -228,7 +228,7 @@
                                 <APP_VERSION>${project.version}</APP_VERSION>
                                 <OUTPUT_DIR>${project.build.directory}\dist</OUTPUT_DIR>
                                 <!-- jpackage APP_IMAGE 결과 폴더(안에 SecureAgent 디렉터리 존재) -->
-                                <APP_IMAGE_DIR>${project.build.directory}\app-image\${app.name.ascii}</APP_IMAGE_DIR>
+                                <APP_IMAGE_DIR>${project.build.directory}\app-image\${app.name.kor}</APP_IMAGE_DIR>
                                 <APP_ICON>${project.basedir}\src\main\resources\app\yellowicon.ico</APP_ICON>
                             </environmentVariables>
                         </configuration>
