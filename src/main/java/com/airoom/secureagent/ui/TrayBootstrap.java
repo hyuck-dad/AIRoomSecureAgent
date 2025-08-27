@@ -298,7 +298,7 @@ public final class TrayBootstrap {
         JSpinner sp2 = new JSpinner(new SpinnerNumberModel(embedPct, 0.0, 100.0, 0.1));
         ((JSpinner.NumberEditor) sp2.getEditor()).getFormat().setMaximumFractionDigits(2);
 
-        JLabel hint = new JLabel("예) 0.004f → 0.4%  (소수 입력 가능)");
+        JLabel hint = new JLabel("예) 0.4% → 0.004f");
         hint.setFont(hint.getFont().deriveFont(Font.PLAIN, hint.getFont().getSize2D()-1));
 
         // 버튼

@@ -6,12 +6,14 @@
     <artifactId>AIRoomSecureAgent</artifactId>
 
     <!-- 앱/페이로드에 들어갈 실제 버전 -->
-    <version>1.0.6</version>
+    <version>1.8.9</version>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <app.name.ascii>SecureAgent</app.name.ascii>
+        <app.name.kor>보안 지킴이</app.name.kor>
     </properties>
     <dependencies>
         <dependency>
@@ -151,33 +153,32 @@
                 <version>1.6.6</version>
                 <executions>
                     <execution>
-                        <id>make-exe</id>
+                        <id>make-app-image</id>
                         <phase>package</phase>
                         <goals><goal>jpackage</goal></goals>
                         <configuration>
-                            <!-- 산출물 입력/출력 -->
-                            <!-- target 전체 대신 jpkg(= shaded JAR만) 사용 -->
+                            <!-- shaded JAR만 복사한 jpkg 사용 중이면 그대로 두고 -->
                             <input>${project.build.directory}/jpkg</input>
-                            <destination>${project.build.directory}/dist</destination>
+                            <!-- APP_IMAGE를 따로 떨어뜨려둠 -->
+                            <destination>${project.build.directory}/app-image</destination>
 
-                            <!-- shaded JAR 파일명, 위에서 classifier=shaded 로 만들었으니 이 이름이 맞다 -->
+                            <type>APP_IMAGE</type>
+                            <name>${app.name.ascii}</name>
                             <mainJar>${project.artifactId}-${project.version}-shaded.jar</mainJar>
                             <mainClass>com.airoom.secureagent.SecureAgentMain</mainClass>
 
-                            <!-- 앱 메타 -->
-                            <name>SecureAgent</name>
-                            <vendor>AIROOM</vendor>
                             <appVersion>${project.version}</appVersion>
-                            <type>EXE</type>
-                            <winUpgradeUuid>c6e987ca-0b39-44a4-b742-7b7380b1ce56</winUpgradeUuid>
+                            <vendor>AIROOM</vendor>
+                            <icon>${project.basedir}/src/main/resources/app/yellowicon.ico</icon>
+<!--                            <winUpgradeUuid>c6e987ca-0b39-44a4-b742-7b7380b1ce56</winUpgradeUuid>-->
                             <!--Windows 업그레이드 식별자는 UUID/GUID 형식 8-4-4-4-12 하이픈 포함, 32자리 16진수 -->
 
-                            <!-- Windows 옵션 -->
-                            <winShortcut>true</winShortcut>         <!-- 바탕화면 바로가기 생성 -->
-                            <winMenu>false</winMenu>                 <!-- 시작 메뉴 등록 -->
-                            <winConsole>false</winConsole>            <!-- 개발 확인용: 콘솔창 표시 -->
-                            <winPerUserInstall>true</winPerUserInstall> <!-- 관리자 권한 없이 사용자 단위 설치 -->
-                            <icon>${project.basedir}/src/main/resources/app/yellowicon.ico</icon>
+<!--                            &lt;!&ndash; Windows 옵션 &ndash;&gt;-->
+<!--                            <winShortcut>true</winShortcut>         &lt;!&ndash; 바탕화면 바로가기 생성 &ndash;&gt;-->
+<!--                            <winMenu>false</winMenu>                 &lt;!&ndash; 시작 메뉴 등록 &ndash;&gt;-->
+<!--                            <winConsole>false</winConsole>            &lt;!&ndash; 개발 확인용: 콘솔창 표시 &ndash;&gt;-->
+<!--                            <winPerUserInstall>true</winPerUserInstall> &lt;!&ndash; 관리자 권한 없이 사용자 단위 설치 &ndash;&gt;-->
+<!--                            <icon>${project.basedir}/src/main/resources/app/yellowicon.ico</icon>-->
 
                             <!-- JVM 옵션/시스템 프로퍼티 -->
                             <javaOptions>
@@ -203,6 +204,38 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <!-- ② Inno Setup( ISCC ) 호출: APP_IMAGE → 한글 설치파일 -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>inno-wrap</id>
+                        <phase>package</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <!-- ISCC.exe 경로: PATH에 추가했다면 "ISCC", 아니면 절대경로로 바꿔줘 -->
+                            <executable>C:\Program Files (x86)\Inno Setup 6\ISCC.exe</executable>
+                            <arguments>
+                                <!-- 환경변수로 .iss에 전달 (한글 안전) -->
+                                <argument>/Qp</argument> <!-- 진척도만 -->
+                                <argument>/DMyDummy=1</argument> <!-- (ISCC 버그 회피용 더미) -->
+                                <argument>${project.basedir}\installer\setup.iss</argument>
+                            </arguments>
+                            <environmentVariables>
+                                <APP_VERSION>${project.version}</APP_VERSION>
+                                <OUTPUT_DIR>${project.build.directory}\dist</OUTPUT_DIR>
+                                <!-- jpackage APP_IMAGE 결과 폴더(안에 SecureAgent 디렉터리 존재) -->
+                                <APP_IMAGE_DIR>${project.build.directory}\app-image\${app.name.ascii}</APP_IMAGE_DIR>
+                                <APP_ICON>${project.basedir}\src\main\resources\app\yellowicon.ico</APP_ICON>
+                            </environmentVariables>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
         </plugins>
     </build>
 </project>
