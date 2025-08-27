@@ -1,6 +1,7 @@
 package com.airoom.secureagent.ui;
 
 import com.airoom.secureagent.server.StatusServer;
+import com.airoom.secureagent.SecureAgentMain;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -8,6 +9,7 @@ import java.awt.*;
 import java.awt.event.ActionListener;
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -52,32 +54,44 @@ public final class TrayBootstrap {
 
             // 최신버전 여부 확인(내부 다이얼로그)
             MenuItem miBackend = new MenuItem("최신 버전 여부 확인");
+            // (기존 miBackend.addActionListener(...) 전체를 아래로 교체)
             miBackend.addActionListener(e -> new Thread(() -> {
+                HttpURLConnection conn = null;
                 try {
                     String url = BACK_URL + "/api/agent/verify"
                             + "?version=" + URLEncoder.encode(version, StandardCharsets.UTF_8)
                             + "&sha256=" + URLEncoder.encode(shaFull, StandardCharsets.UTF_8);
-                    var conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+
+                    conn = (HttpURLConnection) new java.net.URL(url).openConnection();
                     conn.setConnectTimeout(1500);
                     conn.setReadTimeout(2500);
                     conn.setRequestMethod("GET");
-                    try (InputStream is = conn.getInputStream();
-                         var sc = new java.util.Scanner(is, "UTF-8").useDelimiter("\\A")) {
-                        String body = sc.hasNext() ? sc.next() : "";
-                        boolean ok = body.contains("\"ok\":true");
-                        SwingUtilities.invokeLater(() ->
-                                JOptionPane.showMessageDialog(
-                                        null,
-                                        ok ? "최신 버전입니다." : "최신 버전이 아닙니다.",
-                                        "버전 확인",
-                                        ok ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE
-                                )
-                        );
+
+                    int code = conn.getResponseCode();
+                    InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+                    String body;
+                    try (InputStream in = is;
+                         java.util.Scanner sc = new java.util.Scanner(in, "UTF-8").useDelimiter("\\A")) {
+                        body = (sc.hasNext() ? sc.next() : "");
                     }
+
+                    boolean ok = body.contains("\"ok\":true");
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                            null,
+                            ok ? "최신 버전입니다." : "최신 버전이 아닙니다.",
+                            "버전 확인",
+                            ok ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE
+                    ));
                 } catch (Exception ex) {
-                    notifyError("버전 확인 실패: " + ex.getMessage());
+                    final String msg = "네트워크 등의 문제로 버전 확인에 실패했습니다.\n(" + ex.getClass().getSimpleName() + ")";
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                            null, msg, "버전 확인", JOptionPane.ERROR_MESSAGE
+                    ));
+                } finally {
+                    if (conn != null) conn.disconnect();
                 }
             }).start());
+
             menu.add(miBackend);
 
             menu.addSeparator();
@@ -86,7 +100,7 @@ public final class TrayBootstrap {
             MenuItem miQuit = new MenuItem("종료");
             miQuit.addActionListener(e -> {
                 notifyInfo("종료를 시작하겠습니다.");
-                System.exit(0);
+                SecureAgentMain.shutdownAndExit();
             });
             menu.add(miQuit);
 
