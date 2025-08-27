@@ -19,6 +19,8 @@ import oshi.SystemInfo;
 import oshi.hardware.CentralProcessor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -63,6 +65,20 @@ public class StatusServer {
     public static void configure(String version, String sha256){
         if (version != null && !version.isBlank()) agentVersion = version;
         if (sha256  != null && !sha256.isBlank())  agentSha256  = sha256;
+    }
+
+    private static final CopyOnWriteArrayList<Consumer<Boolean>> ACTIVE_LISTENERS = new CopyOnWriteArrayList<>();
+
+    // 외부에서 리스너 등록용 (SecureAgentMain)
+    public static void onActiveChange(Consumer<Boolean> listener) {
+        if (listener != null) ACTIVE_LISTENERS.add(listener);
+    }
+
+    // 내부에서 상태 변화 통지
+    private static void fireActive(boolean on) {
+        for (var l : ACTIVE_LISTENERS) {
+            try { l.accept(on); } catch (Throwable ignore) {}
+        }
     }
 
     private static volatile boolean feActive = false;    // FE 신호
@@ -118,7 +134,11 @@ public class StatusServer {
                 System.out.println("[StatusServer] watermark(final)=false");
             }
         }
+
+        // 여기서 상태 변경 알림 (on/off가 바뀐 경우에만)
+        boolean changed = (lastOnState == null) || (lastOnState != on);
         lastOnState = on;
+        if (changed) fireActive(on);
     }
 
       // 서버 시작 시 워터마크 상태를 주기적으로 재평가하여 스테일을 정리
