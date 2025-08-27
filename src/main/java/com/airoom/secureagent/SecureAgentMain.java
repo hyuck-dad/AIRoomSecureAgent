@@ -12,6 +12,7 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 
+import com.airoom.secureagent.ui.TrayBootstrap;
 import com.airoom.secureagent.util.SelfIntegrity;
 import com.airoom.secureagent.util.SingleInstance;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -98,8 +99,26 @@ public class SecureAgentMain {
             if (sha == null || sha.isBlank() || "DEV-SHA256-PLACEHOLDER".equalsIgnoreCase(sha)) {
                 sha = SelfIntegrity.sha256();                   // 없으면 실시간 계산
             }
+
+            // ---- 트레이 아이콘 초기화 ----
+            String shaShort = (sha.length() >= 8 ? sha.substring(0, 8) : sha);
+            TrayBootstrap.init(ver, shaShort);
+
+            // ---- 상태 서버 시작 & 툴팁 반영 ----
             StatusServer.configure(ver, sha);
             StatusServer.startServer();
+            TrayBootstrap.updateTooltip("SecureAgent " + ver + " (" + shaShort + ")\n동작 중");
+
+            // 상태 변화 시 트레이 알림/툴팁 업데이트를 받도록 리스너 연결
+            StatusServer.onActiveChange(active -> {
+                if (active) {
+                    TrayBootstrap.notifyInfo("브라우저 보호 활성");
+                    TrayBootstrap.updateTooltip("보호: 활성");
+                } else {
+                    TrayBootstrap.notifyWarn("브라우저 보호 비활성");
+                    TrayBootstrap.updateTooltip("보호: 비활성");
+                }
+            });
 
             /* 1.5) 오프라인 스풀 + 재전송 워커 초기화 */
             FileSpoolStore spool = new FileSpoolStore();
@@ -184,6 +203,15 @@ public class SecureAgentMain {
                     return t;
                 }).schedule(SecureAgentMain::runForensicSmokeTest, 2, TimeUnit.SECONDS);
             }
+
+            // ---- 종료 훅: 트레이/워커 정리 ----
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    TrayBootstrap.notifyInfo("SecureAgent 종료 중…");
+                    TrayBootstrap.remove();
+                } catch (Throwable ignored) {}
+            }));
+
             /* 메인 스레드는 대기만 */
             System.out.println("[SecureAgent] 초기화 완료. 감시 중… (SMOKE=" + SMOKE_TEST + ")");
         } catch (Exception e) {
