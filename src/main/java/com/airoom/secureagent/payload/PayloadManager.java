@@ -2,6 +2,7 @@ package com.airoom.secureagent.payload;
 
 import com.airoom.secureagent.anomaly.EventType;
 import com.airoom.secureagent.device.DeviceFingerprint;
+import com.airoom.secureagent.device.DeviceFingerprintCollector;
 import com.airoom.secureagent.device.DeviceIdGenerator;
 import com.airoom.secureagent.util.CryptoUtil;     // 기존 AES 유틸 (encrypt(String)->Base64 가정)
 import com.airoom.secureagent.util.TokenUtil;
@@ -19,8 +20,26 @@ import java.time.format.DateTimeFormatter;
  */
 public class PayloadManager {
 
-    private static final String APP_ID =
-            System.getenv().getOrDefault("AIDT_APP_ID", "SecureAgent/0.9.0");
+    /** app 필드: Manifest → 시스템 프로퍼티 → 환경변수 → 기본값 순으로 결정 */
+    private static String detectAppId() {
+        // 1) 런타임 오버라이드 (예: -Daidt.appId=SecureAgent/0.9.8-hotfix)
+        String sys = System.getProperty("aidt.appId");
+        if (sys != null && !sys.isBlank()) return sys;
+
+        // 2) Shaded JAR Manifest의 Implementation-Version (pom.xml에서 주입)
+        Package pkg = PayloadManager.class.getPackage();
+        String implVer = (pkg != null) ? pkg.getImplementationVersion() : null;
+        if (implVer != null && !implVer.isBlank()) return "SecureAgent/" + implVer;
+
+        // 3) 환경변수 (운영에서 간단 덮어쓰기)
+        String env = System.getenv("AIDT_APP_ID");
+        if (env != null && !env.isBlank()) return env;
+
+        // 4) 최후의 기본값 (개발용)
+        return "SecureAgent/0.9.0";
+    }
+
+    private static final String APP_ID = detectAppId();
 
     // 운영에서는 서버에서만 보관/계산 권장. 개발 편의를 위해 에이전트에도 임시 주입 가능.
     private static final String TOKEN_SECRET =
@@ -55,6 +74,8 @@ public class PayloadManager {
                 : uid;
         String ts = OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
 
+        String pretty = DeviceFingerprintCollector.toPrettyString(fp);
+
         return new ForensicPayload(
                 1,                                  // ver
                 APP_ID,                             // app
@@ -62,6 +83,7 @@ public class PayloadManager {
                 DeviceIdGenerator.compute(fp),      // deviceId (20 hex)
                 fp.macQuality() == null ? "NONE" : fp.macQuality().name(), // macQuality
                 fp.vmSuspect(),                     // vm
+                pretty,
                 (contentId == null || contentId.isBlank()) ? "-" : contentId,
                 action,
                 ts

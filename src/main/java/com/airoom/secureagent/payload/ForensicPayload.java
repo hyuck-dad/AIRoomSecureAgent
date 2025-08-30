@@ -14,6 +14,7 @@ public record ForensicPayload(
         String deviceId,       // 복합 Device ID (SHA-256 해시 토큰)
         String macQuality,     // MAC 품질 태그: NONE/RANDOM/VM/GOOD
         boolean vm,            // VM/가상 NIC/랜덤 MAC 의심 여부
+        String fpPretty,        // 사람이 읽기 좋은 요약 문자열로 FingerPrint
         String contentId,      // 컨텐츠/리소스 식별자 (없으면 "-" 권장)
         EventType action,      // 이벤트 유형 (CAPTURE/RECORDING/STEGO_IMAGE/STEGO_PDF/DECODE_*)
         String ts              // ISO_OFFSET_DATE_TIME (예: 2025-08-09T15:21:33+09:00)

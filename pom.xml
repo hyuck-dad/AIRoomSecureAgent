@@ -1,12 +1,19 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.airoom.secureagent</groupId>
     <artifactId>AIRoomSecureAgent</artifactId>
-    <version>1.0-SNAPSHOT</version>
+
+    <!-- 앱/페이로드에 들어갈 실제 버전 -->
+    <version>2.0.0</version>
+
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <app.name.ascii>SecureAgent</app.name.ascii>
+        <app.name.kor>보안지킴이</app.name.kor>
     </properties>
     <dependencies>
         <dependency>
@@ -55,6 +62,27 @@
     </dependencies>
 
     <build>
+
+        <!-- 리소스 필터링: agent.properties만 치환 -->
+        <resources>
+            <!-- agent.properties는 ${project.version} 치환 -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>agent.properties</include>
+                </includes>
+            </resource>
+            <!-- 아이콘/이미지 등은 필터링 금지 (손상 방지) -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>agent.properties</exclude>
+                </excludes>
+            </resource>
+        </resources>
+
         <plugins>
             <!--
                 모든 의존성 포함한 단일 JAR
@@ -76,12 +104,19 @@
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.airoom.secureagent.SecureAgentMain</mainClass>
+                                    <!-- Manifest에 버전/제목 주입 -->
+                                    <manifestEntries>
+                                        <Implementation-Title>${project.artifactId}</Implementation-Title>
+                                        <Implementation-Version>${project.version}</Implementation-Version>
+                                    </manifestEntries>
                                 </transformer>
                             </transformers>
                         </configuration>
                     </execution>
                 </executions>
             </plugin>
+
+
 
             <!-- shaded JAR만 jpackage 입력 폴더로 스테이징(용량 다이어트 핵심) -->
             <plugin>
@@ -100,6 +135,7 @@
                                     <includes>
                                         <include>${project.artifactId}-${project.version}-shaded.jar</include>
                                     </includes>
+                                    <filtering>false</filtering>
                                 </resource>
                             </resources>
                         </configuration>
@@ -117,48 +153,89 @@
                 <version>1.6.6</version>
                 <executions>
                     <execution>
-                        <id>make-exe</id>
+                        <id>make-app-image</id>
                         <phase>package</phase>
                         <goals><goal>jpackage</goal></goals>
                         <configuration>
-                            <!-- 산출물 입력/출력 -->
-                            <!-- target 전체 대신 jpkg(= shaded JAR만) 사용 -->
+                            <!-- shaded JAR만 복사한 jpkg 사용 중이면 그대로 두고 -->
                             <input>${project.build.directory}/jpkg</input>
-                            <destination>${project.build.directory}/dist</destination>
+                            <!-- APP_IMAGE를 따로 떨어뜨려둠 -->
+                            <destination>${project.build.directory}/app-image</destination>
 
-                            <!-- shaded JAR 파일명, 위에서 classifier=shaded 로 만들었으니 이 이름이 맞다 -->
+                            <type>APP_IMAGE</type>
+                            <name>${app.name.kor}</name>
                             <mainJar>${project.artifactId}-${project.version}-shaded.jar</mainJar>
                             <mainClass>com.airoom.secureagent.SecureAgentMain</mainClass>
 
-                            <!-- 앱 메타 -->
-                            <name>SecureAgent</name>
+                            <appVersion>${project.version}</appVersion>
                             <vendor>AIROOM</vendor>
-                            <appVersion>0.9.6</appVersion>
-                            <type>EXE</type>
-                            <winUpgradeUuid>c6e987ca-0b39-44a4-b742-7b7380b1ce56</winUpgradeUuid>
+                            <icon>${project.basedir}/src/main/resources/app/yellowicon.ico</icon>
+<!--                            <winUpgradeUuid>c6e987ca-0b39-44a4-b742-7b7380b1ce56</winUpgradeUuid>-->
                             <!--Windows 업그레이드 식별자는 UUID/GUID 형식 8-4-4-4-12 하이픈 포함, 32자리 16진수 -->
 
-                            <!-- Windows 옵션 -->
-                            <winShortcut>true</winShortcut>         <!-- 바탕화면 바로가기 생성 -->
-                            <winMenu>false</winMenu>                 <!-- 시작 메뉴 등록 -->
-                            <winConsole>true</winConsole>            <!-- 개발 확인용: 콘솔창 표시 -->
-                            <winPerUserInstall>true</winPerUserInstall> <!-- 관리자 권한 없이 사용자 단위 설치 -->
-                            <icon>${project.basedir}/src/main/resources/app/yellowicon.ico</icon>
+<!--                            &lt;!&ndash; Windows 옵션 &ndash;&gt;-->
+<!--                            <winShortcut>true</winShortcut>         &lt;!&ndash; 바탕화면 바로가기 생성 &ndash;&gt;-->
+<!--                            <winMenu>false</winMenu>                 &lt;!&ndash; 시작 메뉴 등록 &ndash;&gt;-->
+<!--                            <winConsole>false</winConsole>            &lt;!&ndash; 개발 확인용: 콘솔창 표시 &ndash;&gt;-->
+<!--                            <winPerUserInstall>true</winPerUserInstall> &lt;!&ndash; 관리자 권한 없이 사용자 단위 설치 &ndash;&gt;-->
+<!--                            <icon>${project.basedir}/src/main/resources/app/yellowicon.ico</icon>-->
 
                             <!-- JVM 옵션/시스템 프로퍼티 -->
                             <javaOptions>
                                 <javaOption>-Xms128m</javaOption>
                                 <javaOption>-Xmx512m</javaOption>
+                                <!-- 트레이/알림 UI 위해 필수 -->
+                                <javaOption>-Djava.awt.headless=false</javaOption>
+
                                 <javaOption>-Daidt.spool.encrypt=true</javaOption>
                                 <javaOption>-Dsecureagent.test=true</javaOption>
-                                <javaOption>-Dsecureagent.smoke=false</javaOption>
-                                <javaOption>-Dsecureagent.forensic=false</javaOption>
+                                <javaOption>-Dsecureagent.smoke=true</javaOption>
+                                <javaOption>-Dsecureagent.forensic=true</javaOption>
                                 <javaOption>-Dsecureagent.devlog=true</javaOption>
+
+
+                                <!-- 서버 목적지/경로 주입 (property가 env보다 우선) -->
+                                <javaOption>-Daidt.appId=SecureAgent/${project.version}</javaOption>
+                                <javaOption>-Daidt.baseUrl=http://43.200.2.244:8080</javaOption>
+                                <javaOption>-Daidt.logPath=/api/agent/log</javaOption>
+                                <javaOption>-Daidt.eventPath=/api/agent/event</javaOption>
                             </javaOptions>
                         </configuration>
                     </execution>
                 </executions>
             </plugin>
+
+            <!-- ② Inno Setup( ISCC ) 호출: APP_IMAGE → 한글 설치파일 -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>inno-wrap</id>
+                        <phase>package</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <!-- ISCC.exe 경로: PATH에 추가했다면 "ISCC", 아니면 절대경로로 바꿔줘 -->
+                            <executable>C:\Program Files (x86)\Inno Setup 6\ISCC.exe</executable>
+                            <arguments>
+                                <!-- 환경변수로 .iss에 전달 (한글 안전) -->
+                                <argument>/Qp</argument> <!-- 진척도만 -->
+                                <argument>/DMyDummy=1</argument> <!-- (ISCC 버그 회피용 더미) -->
+                                <argument>${project.basedir}\installer\setup.iss</argument>
+                            </arguments>
+                            <environmentVariables>
+                                <APP_VERSION>${project.version}</APP_VERSION>
+                                <OUTPUT_DIR>${project.build.directory}\dist</OUTPUT_DIR>
+                                <!-- jpackage APP_IMAGE 결과 폴더(안에 SecureAgent 디렉터리 존재) -->
+                                <APP_IMAGE_DIR>${project.build.directory}\app-image\${app.name.kor}</APP_IMAGE_DIR>
+                                <APP_ICON>${project.basedir}\src\main\resources\app\yellowicon.ico</APP_ICON>
+                            </environmentVariables>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
         </plugins>
     </build>
 </project>

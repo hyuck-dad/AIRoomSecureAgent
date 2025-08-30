@@ -12,6 +12,7 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 
+import com.airoom.secureagent.ui.TrayBootstrap;
 import com.airoom.secureagent.util.SelfIntegrity;
 import com.airoom.secureagent.util.SingleInstance;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -59,9 +60,18 @@ public class SecureAgentMain {
     private static volatile long lastFlipMs=0;
     private static final int DEBOUNCE_MS=1200;
 
+    private static ScheduledExecutorService procMonES;     // 프로세스 모니터
+    private static ScheduledExecutorService browserES;     // 브라우저 컨텍스트 감시
+    private static ExecutorService fsWatcherES;            // 파일시스템 워처
+    private static RetryWorker retryWorkerRef;             // 재전송 워커 참조
+
     public static void main(String[] args) {
-//        String imgDecode = ImageStegoDecoder.decode("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\22222.jpg");
-//        System.out.println(imgDecode);
+//        String imgDecode1 = ImageStegoDecoder.decode("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\test001.png");
+//        System.out.println(imgDecode1);
+//        String imgDecode2 = ImageStegoDecoder.decode("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\test002.png");
+//        System.out.println(imgDecode2);
+//        String imgDecode3 = ImageStegoDecoder.decode("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\test003.png");
+//        System.out.println(imgDecode3);
 //        String pdfDecode = PdfStegoDecoder.extract("C:\\SpringBootDev\\workspaceintellij\\AIRoomSecureAgent\\test-files\\111.pdf");
 //        System.out.println(pdfDecode);
 
@@ -94,8 +104,26 @@ public class SecureAgentMain {
             if (sha == null || sha.isBlank() || "DEV-SHA256-PLACEHOLDER".equalsIgnoreCase(sha)) {
                 sha = SelfIntegrity.sha256();                   // 없으면 실시간 계산
             }
+
+            // ---- 트레이 아이콘 초기화 ----
+            String shaShort = (sha.length() >= 8 ? sha.substring(0, 8) : sha);
+            TrayBootstrap.init(ver, shaShort, sha);
+
+            // ---- 상태 서버 시작 & 툴팁 반영 ----
             StatusServer.configure(ver, sha);
             StatusServer.startServer();
+            TrayBootstrap.updateTooltip("SecureAgent " + ver + " (" + shaShort + ")\n동작 중");
+
+            // 상태 변화 시 트레이 알림/툴팁 업데이트를 받도록 리스너 연결
+            StatusServer.onActiveChange(active -> {
+                if (active) {
+//                    TrayBootstrap.notifyInfo("브라우저 보호 활성");
+                    TrayBootstrap.updateTooltip("보호: 활성");
+                } else {
+//                    TrayBootstrap.notifyWarn("브라우저 보호 비활성");
+                    TrayBootstrap.updateTooltip("보호: 비활성");
+                }
+            });
 
             /* 1.5) 오프라인 스풀 + 재전송 워커 초기화 */
             FileSpoolStore spool = new FileSpoolStore();
@@ -105,28 +133,32 @@ public class SecureAgentMain {
             retryWorker.start();                      // 주기 재전송 시작
             StatusServer.registerFlushCallback(retryWorker::flushNow); // /flush 트리거
             retryWorker.flushNow();                   // 시작 직후 1회 비우기 시도
-
+            retryWorkerRef = retryWorker;
             /* 2) 캡처 감지(키보드 + 프로세스) */
             // - PrintScreen 감시 스레드
             CaptureDetector.startCaptureWatch();
             // - 프로세스(OBS/GameBar 등) 5초 주기 감시
-            ScheduledExecutorService es = Executors.newScheduledThreadPool(2);
-            es.scheduleAtFixedRate(ProcessMonitor::detect, 0, 5, TimeUnit.SECONDS);
+            procMonES = Executors.newScheduledThreadPool(1, r -> {
+                Thread t = new Thread(r, "proc-monitor");
+                t.setDaemon(true);
+                return t;
+            });
+            procMonES.scheduleAtFixedRate(ProcessMonitor::detect, 0, 5, TimeUnit.SECONDS);
 
             // === 브라우저 활성탭 감시 → Agent 신호 세팅 ===
-            Executors.newSingleThreadScheduledExecutor(r -> {
+            browserES = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "browser-context");
                 t.setDaemon(true);
                 return t;
-            }).scheduleAtFixedRate(() -> {
+            });
+            browserES.scheduleAtFixedRate(() -> {
                 try {
                     boolean open = BrowserContextVerifier.isTargetBrowserOpenAnywhere();
                     long now = System.currentTimeMillis();
                     if (open != lastOpen && (now - lastFlipMs) >= DEBOUNCE_MS) {
                         lastOpen = open; lastFlipMs = now;
-                        StatusServer.setAgentActive(open); // 내부에서 applyWatermark까지 호출됨
+                        StatusServer.setAgentActive(open);
                     }
-                    // 디버그 로그는 상태 바뀔 때만 (StatusServer.setAgentActive 내부에서 on/off 로그가 이미 남음)
                 } catch (Throwable ignore) {}
             }, 0, 500, java.util.concurrent.TimeUnit.MILLISECONDS);
 
@@ -151,11 +183,12 @@ public class SecureAgentMain {
                 }
             }
 
-            Executors.newSingleThreadExecutor(r -> {
+            fsWatcherES = Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r, "fs-watcher");
                 t.setDaemon(true);
                 return t;
-            }).submit(() -> {
+            });
+            fsWatcherES.submit(() -> {
                 try { new GlobalWatcher(watchRoots).run(); }
                 catch (Exception e) { e.printStackTrace(); }
             });
@@ -180,6 +213,15 @@ public class SecureAgentMain {
                     return t;
                 }).schedule(SecureAgentMain::runForensicSmokeTest, 2, TimeUnit.SECONDS);
             }
+
+            // ---- 종료 훅: 트레이/워커 정리 ----
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    TrayBootstrap.notifyInfo("SecureAgent 종료 중…");
+                    TrayBootstrap.remove();
+                } catch (Throwable ignored) {}
+            }));
+
             /* 메인 스레드는 대기만 */
             System.out.println("[SecureAgent] 초기화 완료. 감시 중… (SMOKE=" + SMOKE_TEST + ")");
         } catch (Exception e) {
@@ -414,6 +456,24 @@ public class SecureAgentMain {
     private static String safeUserId() {
         try { return LogManager.getUserId(); }
         catch (Throwable t) { return "user-unknown"; }
+    }
+
+    public static void shutdownAndExit() {
+        try {
+            // 트레이 먼저 제거(EDT 안전)
+            TrayBootstrap.remove();
+        } catch (Throwable ignore) {}
+
+        // 워커/스케줄러 종료
+        try { if (retryWorkerRef != null) retryWorkerRef.shutdown(); } catch (Throwable ignore) {}
+        try { if (procMonES != null) procMonES.shutdownNow(); } catch (Throwable ignore) {}
+        try { if (browserES  != null) browserES.shutdownNow(); } catch (Throwable ignore) {}
+        try { if (fsWatcherES!= null) fsWatcherES.shutdownNow(); } catch (Throwable ignore) {}
+
+        // 1초 정도 정리 대기
+        try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+
+        System.exit(0);
     }
 
 
